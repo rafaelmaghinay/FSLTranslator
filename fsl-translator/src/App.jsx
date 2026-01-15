@@ -1,73 +1,75 @@
-import './App.css'
-import NavigationBar from "./components/NavigationBar.jsx";
+// File: `src/App.jsx`
+import './App.css';
+import NavigationBar from './components/NavigationBar.jsx';
+import Upload from './components/Upload.jsx';
+import StartAnalysis from './components/StartAnalysis.jsx';
+import Results from './components/Results.jsx';
+import LiveCamera from './components/LiveCamera.jsx';
+import { useState } from 'react';
 
-function App() {
-    const cards = [
-        { title: "Upload Video", icon: "🎥" },
-        { title: "Upload Image", icon: "🖼️"},
-        { title: "Upload Sequence of Images", icon: "📁"  },
-        { title: "Start Live Camera", icon: "📹" }
-    ];
+export default function App() {
+    const [uploaded, setUploaded] = useState(null); // { urls: [], paths: [], type }
+    const [result, setResult] = useState(null);
+    const [liveActive, setLiveActive] = useState(false);
 
-    const handleUploadVideo = () => {
-        document.getElementById('videoInput').click();
+    const handleUploaded = (payload) => {
+        setUploaded(payload);
+        setResult(null);
     };
 
-    const handleUploadImage = () => {
-        document.getElementById('imageInput').click();
+    const handleStartResults = (res) => {
+        setResult(res);
     };
 
-    const handleUploadMultiple = () => {
-        document.getElementById('multipleInput').click();
+    const handleClearAll = () => {
+        setUploaded(null);
+        setResult(null);
+        setLiveActive(false);
     };
 
-    const handleLiveCamera = () => {
-        console.log('Starting live camera...');
-        // Add camera functionality here
+    const handleStartLive = () => {
+        setUploaded(null);
+        setResult(null);
+        setLiveActive(true);
     };
 
-    const buttonHandlers = [handleUploadVideo, handleUploadImage, handleUploadMultiple, handleLiveCamera];
-
-
+    const handleLiveBack = () => {
+        // called when LiveCamera signals back; clear live mode and any results
+        setLiveActive(false);
+        setUploaded(null);
+        setResult(null);
+    };
 
     return (
-      <main>
-          <div className="wrapper">
-              <header className="App-header">
-                  <NavigationBar />
-              </header>
+        <main>
+            <div className="wrapper">
+                <header className="App-header">
+                    <NavigationBar />
+                </header>
 
-              <section className="hero py-12 bg-gray-50 mt-10">
-                  <div className="max-w-3xl mx-auto text-center px-4">
-                      <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900">
-                          Filipino Sign Language Recognizer AI
-                      </h2>
-                      <p className="mt-4 text-lg text-gray-600">
-                          AI-powered Sign Language Recognizer for Filipino Sign Language
-                      </p>
+                <section className="hero py-12 bg-gray-50 mt-10">
+                    <div className="max-w-5xl mx-auto text-center px-4">
+                        <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900">
+                            Filipino Sign Language Recognizer AI
+                        </h2>
+                        <p className="mt-4 text-lg text-gray-600">AI-powered Sign Language Recognizer for Filipino Sign Language</p>
 
-                      <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4. gap-4 max-w-2xl mx-auto">
-                          {cards.map((card, index) => (
-                              <div key={index} className="bg-white rounded-lg shadow-md p-4 hover:shadow-lg transition-shadow">
-                                  <div className="text-3xl mb-3">{card.icon}</div>
-                                  <h3 className="text-xl font-semibold text-gray-900">{card.title}</h3>
-                                  <button
-                                      onClick={buttonHandlers[index]}
-                                      className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1 px-2 rounded transition-colors text-sm"
-                                  >
-                                      {card.title}
-                                  </button>
-                              </div>
-                          ))}
-                      </div>
-                  </div>
-              </section>
-              <input type="file" id="videoInput" accept="video/*" hidden onChange={(e) => console.log('Video selected:', e.target.files)} />
-              <input type="file" id="imageInput" accept="image/*" hidden onChange={(e) => console.log('Image selected:', e.target.files)} />
-              <input type="file" id="multipleInput" accept="image/*" multiple hidden onChange={(e) => console.log('Images selected:', e.target.files)} />
-          </div>
-      </main>
-  )
+                        <div className="mt-12">
+                            {liveActive ? (
+                                <LiveCamera onResults={handleStartResults} onBack={handleLiveBack} />
+                            ) : (
+                                !uploaded && !result ? (
+                                    <Upload onUploaded={handleUploaded} onStartLive={handleStartLive} />
+                                ) : uploaded && !result ? (
+                                    <StartAnalysis urls={uploaded.urls} paths={uploaded.paths} onResults={handleStartResults} onBack={handleClearAll} />
+                                ) : result ? (
+                                    <Results urls={uploaded ? uploaded.urls : []} result={result} onBack={handleClearAll} />
+                                ) : null
+                            )}
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    );
 }
-
-export default App
