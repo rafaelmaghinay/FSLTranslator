@@ -287,11 +287,13 @@ export default function LiveCamera({ onResults, onBack }) {
             ctx.drawImage(video, 0, 0, 640, 640);
 
             const frameBase64 = canvas.toDataURL('image/jpeg', 0.7);
+            const timestamp = Date.now() / 1000; // Unix timestamp in seconds (float)
 
             try {
                 const formData = new FormData();
                 formData.append('session_id', sid);
                 formData.append('frame', frameBase64);
+                formData.append('timestamp', timestamp.toString());
 
                 const res = await fetch(`${SERVER_BASE}/api/live/frame`, {
                     method: 'POST',
@@ -307,7 +309,7 @@ export default function LiveCamera({ onResults, onBack }) {
             } catch (err) {
                 console.error('Failed to send frame:', err);
             }
-        }, 150); // Match the frame rate
+        }, 150);
     };
 
     // Stop capturing and get cropped images

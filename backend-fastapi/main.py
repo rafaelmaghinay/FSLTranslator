@@ -391,6 +391,7 @@ async def start_capture(session_id: str = Form(None)):
         session["is_capturing"] = True
         session["start_time"] = time.time()
         session["frames"] = []
+        session["timestamps"] = []  # ⬅️ NEW: Store timestamps
         session["hand_crops"] = []
         
         print(f"🎬 Started capture session: {session_id}")
@@ -409,18 +410,20 @@ async def start_capture(session_id: str = Form(None)):
 @app.post("/api/live/frame")
 async def receive_frame(
     session_id: str = Form(...),
-    frame: str = Form(...)
+    frame: str = Form(...),
+    timestamp: float = Form(None)  # ⬅️ NEW: Accept optional client timestamp
 ):
     """
-    OPTIMIZED: Just store frames, defer YOLO detection to /api/live/stop.
-    This makes capture 5-10x faster!
+    OPTIMIZED: Just store frames with timestamps, defer YOLO detection to /api/live/stop.
+    NOW ACCEPTS CLIENT-SIDE TIMESTAMPS for more accurate timing!
     
     Args:
         session_id: Session identifier
         frame: Base64 encoded frame
+        timestamp: Client-side timestamp (milliseconds since epoch) - OPTIONAL
     
     Returns:
-        dict: {"ok": True, "total_frames": int}
+        dict: {"ok": True, "total_frames": int, "timestamp": float}
     """
     try:
         # Get session
@@ -443,13 +446,40 @@ async def receive_frame(
         if frame_bgr is None:
             raise HTTPException(400, "Invalid frame")
         
-        # ⬅️ OPTIMIZATION: Just store the frame, don't detect yet!
+        # ⬅️ USE CLIENT TIMESTAMP IF PROVIDED, OTHERWISE SERVER TIMESTAMP
+        if timestamp is not None:
+            # Client sent timestamp in milliseconds, convert to seconds
+            client_timestamp = timestamp / 1000.0
+            
+            # Initialize session start time if not set
+            if session.get("start_time") is None:
+                session["start_time"] = client_timestamp
+            
+            relative_timestamp = client_timestamp - session["start_time"]
+            used_timestamp = client_timestamp
+            timestamp_source = "client"
+        else:
+            # Fallback to server timestamp
+            server_timestamp = time.time()
+            
+            if session.get("start_time") is None:
+                session["start_time"] = server_timestamp
+            
+            relative_timestamp = server_timestamp - session["start_time"]
+            used_timestamp = server_timestamp
+            timestamp_source = "server"
+        
+        # ⬅️ STORE FRAME AND TIMESTAMP
         session["frames"].append(frame_bgr.copy())
+        session["timestamps"].append(used_timestamp)
         
         # Return immediately (much faster!)
         return {
             "ok": True,
-            "total_frames": len(session["frames"])
+            "total_frames": len(session["frames"]),
+            "timestamp": used_timestamp,
+            "relative_time": round(relative_timestamp, 3),
+            "timestamp_source": timestamp_source  # ⬅️ NEW: Tell client which timestamp was used
         }
     
     except HTTPException:
@@ -460,12 +490,15 @@ async def receive_frame(
         raise HTTPException(500, f"Failed to process frame: {str(e)}")
 
 
+
+
+
 @app.post("/api/live/stop")
 async def stop_capture(session_id: str = Form(...)):
     """
     OPTIMIZED: Stop capture, then batch-process all frames with YOLO.
     Extract exactly SEQ_LEN hand crops IN SEQUENCE for classification.
-    NOW DETECTS BOTH HANDS at ORIGINAL resolution.
+    NOW USES 10/80/10 SAMPLING STRATEGY (beginning/middle/end).
     """
     try:
         # Get session
@@ -482,12 +515,14 @@ async def stop_capture(session_id: str = Form(...)):
         duration = time.time() - session.get("start_time", 0)
         
         frames = session["frames"]
+        timestamps = session.get("timestamps", [])
         total_frames = len(frames)
         
         print(f"⏹️ Stopped capture session: {session_id}")
         print(f"   Duration: {duration:.2f}s")
         print(f"   Total frames captured: {total_frames}")
         print(f"   Frame size: {frames[0].shape if frames else 'N/A'}")
+        print(f"   Timestamps collected: {len(timestamps)}")
         
         if total_frames == 0:
             return {
@@ -502,17 +537,15 @@ async def stop_capture(session_id: str = Form(...)):
         
         all_hand_crops = []
         frame_indices = []
+        crop_timestamps = []
         
         for idx, frame in enumerate(frames):
-            # ⬅️ USE resize_input=False to keep original resolution
             boxes = yolo_detect_boxes(frame, conf_thres=0.30, resize_input=False)
             
             if len(boxes) == 0:
                 continue
             
             h, w = frame.shape[:2]
-            
-            # Sort boxes left-to-right
             boxes_sorted = sorted(boxes, key=lambda b: b["x1"])
             
             frame_crops = []
@@ -522,69 +555,153 @@ async def stop_capture(session_id: str = Form(...)):
                 x2 = int(box["x2"])
                 y2 = int(box["y2"])
                 
-                # Add padding
                 pad = 20
                 x1 = max(0, x1 - pad)
                 y1 = max(0, y1 - pad)
                 x2 = min(w, x2 + pad)
                 y2 = min(h, y2 + pad)
                 
-                # ⬅️ CROP FROM ORIGINAL FRAME (not resized!)
                 crop = frame[y1:y2, x1:x2]
                 if crop.size > 0:
                     frame_crops.append(crop.copy())
-                    print(f"   Frame {idx}: Crop size = {crop.shape}")  # Debug
             
-            # Add all crops from this frame
             if len(frame_crops) > 0:
                 all_hand_crops.extend(frame_crops)
                 frame_indices.extend([idx] * len(frame_crops))
+                crop_timestamps.extend([timestamps[idx] if idx < len(timestamps) else 0] * len(frame_crops))
         
         print(f"   ✅ Detected {len(all_hand_crops)} hand crops across {len(set(frame_indices))} frames")
         print(f"   Hands per frame: {len(all_hand_crops) / max(len(set(frame_indices)), 1):.1f} average")
         
-        # Sample uniformly while preserving temporal order
-        if len(all_hand_crops) < SEQ_LEN:
-            if len(all_hand_crops) > 0:
-                original_count = len(all_hand_crops)
-                while len(all_hand_crops) < SEQ_LEN:
-                    all_hand_crops.append(all_hand_crops[-1])
-                message = f"⚠️ Only {original_count} hand crops detected. Padded to {SEQ_LEN}."
-            else:
-                return {
-                    "ok": False,
-                    "error": "No hands detected in any frame",
-                    "total_frames": total_frames,
-                    "hand_frames": 0
-                }
-        elif len(all_hand_crops) > SEQ_LEN:
-            indices = np.linspace(0, len(all_hand_crops) - 1, SEQ_LEN, dtype=int)
-            sampled_crops = [all_hand_crops[i] for i in indices]
-            sampled_indices = [frame_indices[i] for i in indices]
-            
-            print(f"   📊 Sampled crop indices: {sampled_indices}")
-            
-            all_hand_crops = sampled_crops
-            message = f"✅ Sampled {SEQ_LEN} crops from {len(frame_indices)} detected (original resolution)"
-        else:
-            message = f"✅ Perfect! Got exactly {SEQ_LEN} hand crops (original resolution)"
+        # ⬅️ NEW: 10/80/10 SAMPLING STRATEGY
+        selected_crops = []
+        selected_timestamps = []
         
-        # Convert crops to base64 (in sequence!)
-        cropped_b64 = []
-        for i, crop in enumerate(all_hand_crops):
-            # ⬅️ RESIZE ONLY FOR CLASSIFICATION OUTPUT (640x640)
-            crop_resized = cv2.resize(crop, (640, 640))
+        if len(all_hand_crops) == 0:
+            return {
+                "ok": False,
+                "error": "No hands detected in any frame",
+                "total_frames": total_frames,
+                "hand_frames": 0
+            }
+        
+        if len(all_hand_crops) < SEQ_LEN:
+            # Not enough crops - pad with last crop
+            original_count = len(all_hand_crops)
+            selected_crops = all_hand_crops.copy()
+            selected_timestamps = crop_timestamps.copy()
             
-            # Encode as JPEG
-            _, buffer = cv2.imencode('.jpg', crop_resized, [cv2.IMWRITE_JPEG_QUALITY, 90])
+            while len(selected_crops) < SEQ_LEN:
+                selected_crops.append(selected_crops[-1])
+                selected_timestamps.append(selected_timestamps[-1])
+            
+            message = f"⚠️ Only {original_count} hand crops detected. Padded to {SEQ_LEN}."
+            print(f"   {message}")
+        
+        else:
+            # ⬅️ APPLY 10/80/10 SAMPLING STRATEGY
+            total_crops = len(all_hand_crops)
+            
+            # Calculate split counts (10% / 80% / 10%)
+            num_begin = int(SEQ_LEN * 0.10)  # 2 frames
+            num_middle = int(SEQ_LEN * 0.80)  # 16 frames
+            num_end = SEQ_LEN - num_begin - num_middle  # 2 frames (ensure exact SEQ_LEN)
+            
+            print(f"   📊 10/80/10 Sampling: {num_begin} beginning + {num_middle} middle + {num_end} end = {SEQ_LEN}")
+            
+            # Define temporal regions based on crop timestamps
+            if crop_timestamps:
+                min_time = min(crop_timestamps)
+                max_time = max(crop_timestamps)
+                time_range = max_time - min_time
+                
+                # Time boundaries: 10% | 80% | 10%
+                begin_end_time = min_time + (time_range * 0.10)
+                middle_end_time = min_time + (time_range * 0.90)
+                
+                print(f"   ⏱️ Time range: {time_range:.2f}s")
+                print(f"   ⏱️ Begin: 0.00s - {begin_end_time - min_time:.2f}s")
+                print(f"   ⏱️ Middle: {begin_end_time - min_time:.2f}s - {middle_end_time - min_time:.2f}s")
+                print(f"   ⏱️ End: {middle_end_time - min_time:.2f}s - {time_range:.2f}s")
+                
+                # Split crops into temporal regions
+                begin_crops = [(i, c, t) for i, (c, t) in enumerate(zip(all_hand_crops, crop_timestamps)) 
+                              if t < begin_end_time]
+                middle_crops = [(i, c, t) for i, (c, t) in enumerate(zip(all_hand_crops, crop_timestamps)) 
+                               if begin_end_time <= t < middle_end_time]
+                end_crops = [(i, c, t) for i, (c, t) in enumerate(zip(all_hand_crops, crop_timestamps)) 
+                            if t >= middle_end_time]
+                
+                print(f"   📦 Region crops: {len(begin_crops)} begin, {len(middle_crops)} middle, {len(end_crops)} end")
+                
+                # Sample uniformly from each region
+                def sample_region(region_crops, num_samples):
+                    if len(region_crops) == 0:
+                        return []
+                    if len(region_crops) <= num_samples:
+                        return region_crops
+                    indices = np.linspace(0, len(region_crops) - 1, num_samples, dtype=int)
+                    return [region_crops[i] for i in indices]
+                
+                sampled_begin = sample_region(begin_crops, num_begin)
+                sampled_middle = sample_region(middle_crops, num_middle)
+                sampled_end = sample_region(end_crops, num_end)
+                
+                # Handle edge cases: if a region has no crops, borrow from middle
+                if len(sampled_begin) < num_begin:
+                    deficit = num_begin - len(sampled_begin)
+                    sampled_middle = sample_region(middle_crops, num_middle + deficit)
+                    print(f"   ⚠️ Begin region has only {len(sampled_begin)} crops, borrowed {deficit} from middle")
+                
+                if len(sampled_end) < num_end:
+                    deficit = num_end - len(sampled_end)
+                    sampled_middle = sample_region(middle_crops, num_middle + deficit)
+                    print(f"   ⚠️ End region has only {len(sampled_end)} crops, borrowed {deficit} from middle")
+                
+                # Combine in order: begin -> middle -> end
+                sampled_all = sampled_begin + sampled_middle + sampled_end
+                
+                # Extract crops and timestamps (sorted by original index to preserve order)
+                sampled_all_sorted = sorted(sampled_all, key=lambda x: x[0])
+                selected_crops = [crop for _, crop, _ in sampled_all_sorted]
+                selected_timestamps = [ts for _, _, ts in sampled_all_sorted]
+                
+                print(f"   ✅ Sampled {len(selected_crops)} crops using 10/80/10 strategy")
+                print(f"   📊 Crop indices: {[idx for idx, _, _ in sampled_all_sorted]}")
+                
+                message = f"✅ Sampled {SEQ_LEN} crops using 10/80/10 strategy (begin/middle/end)"
+            
+            else:
+                # Fallback: no timestamps, use uniform sampling
+                print("   ⚠️ No timestamps available, falling back to uniform sampling")
+                indices = np.linspace(0, len(all_hand_crops) - 1, SEQ_LEN, dtype=int)
+                selected_crops = [all_hand_crops[i] for i in indices]
+                selected_timestamps = [crop_timestamps[i] if i < len(crop_timestamps) else 0 for i in indices]
+                message = f"✅ Sampled {SEQ_LEN} crops uniformly (no timestamps)"
+        
+        # Convert crops to base64
+        cropped_b64 = []
+        for i, crop in enumerate(selected_crops):
+            _, buffer = cv2.imencode('.jpg', crop, [cv2.IMWRITE_JPEG_QUALITY, 90])
             crop_b64 = base64.b64encode(buffer).decode()
             cropped_b64.append(f"data:image/jpeg;base64,{crop_b64}")
         
+        # Calculate timing statistics
+        if selected_timestamps:
+            start_time = session["start_time"]
+            relative_timestamps = [t - start_time for t in selected_timestamps]
+            avg_fps = len(cropped_b64) / (relative_timestamps[-1] - relative_timestamps[0]) if len(relative_timestamps) > 1 else 0
+        else:
+            relative_timestamps = []
+            avg_fps = 0
+        
         print(f"   {message}")
-        print(f"   Returning {len(cropped_b64)} cropped hand images (640x640) IN SEQUENCE")
+        print(f"   Returning {len(cropped_b64)} cropped hand images IN SEQUENCE")
+        print(f"   Average FPS of selected crops: {avg_fps:.1f}")
         
         # Clear session frames to free memory
         session["frames"] = []
+        session["timestamps"] = []
         session["hand_crops"] = []
         gc.collect()
         
@@ -593,6 +710,11 @@ async def stop_capture(session_id: str = Form(...)):
             "total_frames": total_frames,
             "hand_frames": len(cropped_b64),
             "cropped_images": cropped_b64,
+            "timestamps": selected_timestamps,
+            "relative_timestamps": relative_timestamps,
+            "duration": duration,
+            "avg_fps": round(avg_fps, 2),
+            "sampling_strategy": "10/80/10",  # ⬅️ UPDATED: Changed to 10/80/10
             "message": message
         }
     
