@@ -310,7 +310,7 @@ async def websocket_live(websocket: WebSocket):
     
     frame_skip_counter = 0
     last_boxes = []
-    FRAME_SKIP = 3  # ⬅️ INCREASE from 2 to 3 (process every 3rd frame)
+    FRAME_SKIP = 3
     
     try:
         while True:
@@ -324,10 +324,9 @@ async def websocket_live(websocket: WebSocket):
                     await websocket.send_json({"error": "No frame provided"})
                     continue
                 
-                # Frame skipping: only process every 3rd frame
+                # Frame skipping
                 frame_skip_counter += 1
                 if frame_skip_counter % FRAME_SKIP != 0:
-                    # Return cached result immediately
                     await websocket.send_json({
                         "boxes": last_boxes,
                         "count": len(last_boxes),
@@ -348,8 +347,8 @@ async def websocket_live(websocket: WebSocket):
                     await websocket.send_json({"error": "Invalid frame"})
                     continue
                 
-                # Detect hands
-                boxes = yolo_detect_boxes(frame, conf_thres=0.25)  # ⬅️ Lower threshold
+                # ⬅️ USE resize_input=True for LIVE detection (faster)
+                boxes = yolo_detect_boxes(frame, conf_thres=0.25, resize_input=True)
                 last_boxes = boxes
                 
                 # Send response
@@ -466,19 +465,7 @@ async def stop_capture(session_id: str = Form(...)):
     """
     OPTIMIZED: Stop capture, then batch-process all frames with YOLO.
     Extract exactly SEQ_LEN hand crops IN SEQUENCE for classification.
-    NOW DETECTS BOTH HANDS (left and right) if present.
-    
-    Args:
-        session_id: Session identifier
-    
-    Returns:
-        dict: {
-            "ok": True,
-            "total_frames": int,
-            "hand_frames": int,
-            "cropped_images": List[str],  # base64 encoded crops
-            "message": str
-        }
+    NOW DETECTS BOTH HANDS at ORIGINAL resolution.
     """
     try:
         # Get session
@@ -500,6 +487,7 @@ async def stop_capture(session_id: str = Form(...)):
         print(f"⏹️ Stopped capture session: {session_id}")
         print(f"   Duration: {duration:.2f}s")
         print(f"   Total frames captured: {total_frames}")
+        print(f"   Frame size: {frames[0].shape if frames else 'N/A'}")
         
         if total_frames == 0:
             return {
@@ -509,23 +497,22 @@ async def stop_capture(session_id: str = Form(...)):
                 "hand_frames": 0
             }
         
-        # ⬅️ PROCESS ALL FRAMES IN SEQUENCE - DETECT BOTH HANDS
-        print(f"🔍 Processing {total_frames} frames with YOLO (detecting both hands)...")
+        # ⬅️ PROCESS ALL FRAMES AT ORIGINAL SIZE - DETECT BOTH HANDS
+        print(f"🔍 Processing {total_frames} frames with YOLO (at original resolution)...")
         
         all_hand_crops = []
         frame_indices = []
         
         for idx, frame in enumerate(frames):
-            # Detect ALL hands in this frame (not just first one!)
-            boxes = yolo_detect_boxes(frame, conf_thres=0.30)
+            # ⬅️ USE resize_input=False to keep original resolution
+            boxes = yolo_detect_boxes(frame, conf_thres=0.30, resize_input=False)
             
             if len(boxes) == 0:
                 continue
             
             h, w = frame.shape[:2]
             
-            # ⬅️ CRITICAL FIX: Process ALL detected hands, not just first one
-            # Sort boxes left-to-right to maintain consistency (left hand, then right hand)
+            # Sort boxes left-to-right
             boxes_sorted = sorted(boxes, key=lambda b: b["x1"])
             
             frame_crops = []
@@ -542,28 +529,27 @@ async def stop_capture(session_id: str = Form(...)):
                 x2 = min(w, x2 + pad)
                 y2 = min(h, y2 + pad)
                 
+                # ⬅️ CROP FROM ORIGINAL FRAME (not resized!)
                 crop = frame[y1:y2, x1:x2]
                 if crop.size > 0:
                     frame_crops.append(crop.copy())
+                    print(f"   Frame {idx}: Crop size = {crop.shape}")  # Debug
             
             # Add all crops from this frame
             if len(frame_crops) > 0:
                 all_hand_crops.extend(frame_crops)
-                # Track frame index for each crop
                 frame_indices.extend([idx] * len(frame_crops))
         
         print(f"   ✅ Detected {len(all_hand_crops)} hand crops across {len(set(frame_indices))} frames")
         print(f"   Hands per frame: {len(all_hand_crops) / max(len(set(frame_indices)), 1):.1f} average")
-        print(f"   Frame indices with hands: {sorted(set(frame_indices))[:10]}..." if len(set(frame_indices)) > 10 else f"   Frame indices: {sorted(set(frame_indices))}")
         
-        # ⬅️ Sample uniformly while preserving temporal order
+        # Sample uniformly while preserving temporal order
         if len(all_hand_crops) < SEQ_LEN:
             if len(all_hand_crops) > 0:
-                # Pad with last frame (maintains sequence)
                 original_count = len(all_hand_crops)
                 while len(all_hand_crops) < SEQ_LEN:
                     all_hand_crops.append(all_hand_crops[-1])
-                message = f"⚠️ Only {original_count} hand crops detected. Padded to {SEQ_LEN} by repeating last crop."
+                message = f"⚠️ Only {original_count} hand crops detected. Padded to {SEQ_LEN}."
             else:
                 return {
                     "ok": False,
@@ -572,23 +558,21 @@ async def stop_capture(session_id: str = Form(...)):
                     "hand_frames": 0
                 }
         elif len(all_hand_crops) > SEQ_LEN:
-            # Sample uniformly to get exactly SEQ_LEN crops IN SEQUENCE
             indices = np.linspace(0, len(all_hand_crops) - 1, SEQ_LEN, dtype=int)
-            
             sampled_crops = [all_hand_crops[i] for i in indices]
             sampled_indices = [frame_indices[i] for i in indices]
             
             print(f"   📊 Sampled crop indices: {sampled_indices}")
             
             all_hand_crops = sampled_crops
-            message = f"✅ Sampled {SEQ_LEN} crops from {len(frame_indices)} detected (in sequence, both hands included)"
+            message = f"✅ Sampled {SEQ_LEN} crops from {len(frame_indices)} detected (original resolution)"
         else:
-            message = f"✅ Perfect! Got exactly {SEQ_LEN} hand crops"
+            message = f"✅ Perfect! Got exactly {SEQ_LEN} hand crops (original resolution)"
         
         # Convert crops to base64 (in sequence!)
         cropped_b64 = []
         for i, crop in enumerate(all_hand_crops):
-            # Resize to 640x640 (YOLO training size) for consistency
+            # ⬅️ RESIZE ONLY FOR CLASSIFICATION OUTPUT (640x640)
             crop_resized = cv2.resize(crop, (640, 640))
             
             # Encode as JPEG

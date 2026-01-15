@@ -56,25 +56,43 @@ else:
 
 # In webcam.py, update yolo_detect_boxes function:
 
-def yolo_detect_boxes(frame, conf_thres=0.30):
-    """Run YOLO detection with optimized settings."""
+def yolo_detect_boxes(frame, conf_thres=0.30, resize_input=True):
+    """
+    Run YOLO detection with optimized settings.
+    
+    Args:
+        frame: Input frame (BGR)
+        conf_thres: Confidence threshold
+        resize_input: If True, resize frame to 256x256 before YOLO.
+                     If False, let YOLO handle resizing internally.
+    
+    Returns:
+        list: Detected boxes with coordinates
+    """
     h, w = frame.shape[:2]
     
-    # ⬅️ REDUCE from 320 to 256 for faster inference
-    target_size = 256  # Was 320
-    resized = cv2.resize(frame, (target_size, target_size))
+    if resize_input:
+        # ⬅️ FOR LIVE DETECTION: Pre-resize to 256x256 for speed
+        target_size = 256
+        resized = cv2.resize(frame, (target_size, target_size))
+        input_frame = resized
+        scale = w / target_size
+    else:
+        # ⬅️ FOR CAPTURE/STOP: Use original frame, let YOLO resize internally
+        input_frame = frame
+        scale = 1.0  # No scaling needed
     
     # Run YOLO with optimized settings
     results = detector.predict(
-        resized,
+        input_frame,
         conf=conf_thres,
-        imgsz=target_size,
+        imgsz=256,  # YOLO internal resize target
         verbose=False,
         device='cuda' if torch.cuda.is_available() else 'cpu',
         half=torch.cuda.is_available(),
         max_det=2,  
         agnostic_nms=True,
-        classes=[0]  # ⬅️ Only detect class 0 (hand) if YOLO is trained that way
+        classes=[0]  # Only detect class 0 (hand)
     )
     
     boxes = []
@@ -83,9 +101,12 @@ def yolo_detect_boxes(frame, conf_thres=0.30):
             x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
             conf = float(box.conf[0])
             
-            # Scale back to original frame size
-            scale = w / target_size
-            x1, y1, x2, y2 = int(x1 * scale), int(y1 * scale), int(x2 * scale), int(y2 * scale)
+            if resize_input:
+                # Scale back to original frame size
+                x1, y1, x2, y2 = int(x1 * scale), int(y1 * scale), int(x2 * scale), int(y2 * scale)
+            else:
+                # Already in original frame coordinates
+                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
             
             # Clamp to frame bounds
             x1, y1 = max(0, min(x1, w)), max(0, min(y1, h))
