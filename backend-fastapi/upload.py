@@ -288,6 +288,9 @@ def process_image_sequence(image_paths: list) -> dict:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
+
+
+
 def process_video(video_path: str, target_frames: int = TARGET_VIDEO_FRAMES) -> dict:
     try:
         cap = cv2.VideoCapture(str(video_path))
@@ -304,7 +307,6 @@ def process_video(video_path: str, target_frames: int = TARGET_VIDEO_FRAMES) -> 
             cap.release()
             return {"status": "error", "error": "Video has 0 frames"}
 
-        # oversample to increase chance of finding 20 hand frames
         sample_count = min(total_frames, max(target_frames * 3, target_frames))
         sample_indices = np.linspace(0, total_frames - 1, sample_count).astype(int)
 
@@ -315,7 +317,6 @@ def process_video(video_path: str, target_frames: int = TARGET_VIDEO_FRAMES) -> 
             if not ok or frame is None:
                 continue
 
-            # YOLO inference (single frame)
             results = detector(frame, verbose=False)
             if not results or len(results) == 0:
                 continue
@@ -324,63 +325,162 @@ def process_video(video_path: str, target_frames: int = TARGET_VIDEO_FRAMES) -> 
             if r.boxes is None or len(r.boxes) == 0:
                 continue
 
-            # pick highest-confidence box
-            best = max(r.boxes, key=lambda b: float(b.conf[0]))
-            conf = float(best.conf[0])
-            if conf < 0.30:
-                continue
-
-            x1, y1, x2, y2 = map(int, best.xyxy[0].tolist())
             h, w = frame.shape[:2]
-            pad = 20
-            x1 = max(0, x1 - pad)
-            y1 = max(0, y1 - pad)
-            x2 = min(w, x2 + pad)
-            y2 = min(h, y2 + pad)
+            valid_boxes = [box for box in r.boxes if float(box.conf[0]) >= 0.30]
+            valid_boxes = sorted(valid_boxes, key=lambda b: float(b.xyxy[0][0]))
+            
+            for box in valid_boxes[:2]:
+                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                
+                pad = 20
+                x1 = max(0, x1 - pad)
+                y1 = max(0, y1 - pad)
+                x2 = min(w, x2 + pad)
+                y2 = min(h, y2 + pad)
 
-            crop = frame[y1:y2, x1:x2]
-            if crop is None or crop.size == 0:
-                continue
+                crop = frame[y1:y2, x1:x2]
+                if crop is None or crop.size == 0:
+                    continue
 
-            candidates.append((int(idx), crop))
+                candidates.append((int(idx), crop))
 
         cap.release()
 
-        if len(candidates) < target_frames:
+        # ⬅️ NEW: Handle no hands detected
+        if len(candidates) == 0:
             return {
-                "status": "insufficient_hands",
-                "count": len(candidates),
-                "required": target_frames,
-                "total_frames": total_frames,
-                "error": f"Only {len(candidates)} frames with hands detected",
+                "status": "error",
+                "error": "No hands detected in any frame",
+                "total_frames": total_frames
             }
 
-        # Keep temporal order; pick exactly target_frames uniformly among candidates
-        candidates.sort(key=lambda t: t[0])
-        pick_idx = np.linspace(0, len(candidates) - 1, target_frames).astype(int)
-        selected = [candidates[i][1] for i in pick_idx]
+        # ⬅️ NEW: Apply 10/80/10 padding if insufficient crops
+        selected_crops = []
+        
+        if len(candidates) < target_frames:
+            print(f"⚠️  Only {len(candidates)} crops found, padding to {target_frames} using 10/80/10 strategy...")
+            
+            # Sort by temporal order
+            candidates.sort(key=lambda t: t[0])
+            
+            # Calculate 10/80/10 split
+            total_crops = len(candidates)
+            begin_end_idx = max(1, int(total_crops * 0.10))  # First 10%
+            middle_start_idx = begin_end_idx
+            middle_end_idx = total_crops - begin_end_idx  # Last 10%
+            
+            # Extract regions
+            begin_crops = candidates[:begin_end_idx]
+            middle_crops = candidates[middle_start_idx:middle_end_idx]
+            end_crops = candidates[middle_end_idx:]
+            
+            print(f"   📦 Regions: {len(begin_crops)} begin, {len(middle_crops)} middle, {len(end_crops)} end")
+            
+            # Calculate how many we need from each region
+            num_begin = int(target_frames * 0.10)  # 2 frames
+            num_end = int(target_frames * 0.10)    # 2 frames
+            num_middle = target_frames - num_begin - num_end  # 16 frames
+            
+            # Sample from each region (with padding if needed)
+            def pad_region(region_crops, target_count):
+                """Sample or pad a region to reach target_count."""
+                if len(region_crops) == 0:
+                    return []
+                if len(region_crops) >= target_count:
+                    # Uniform sampling
+                    indices = np.linspace(0, len(region_crops) - 1, target_count, dtype=int)
+                    return [region_crops[i] for i in indices]
+                else:
+                    # Pad by duplicating middle crops
+                    result = region_crops.copy()
+                    middle_idx = len(region_crops) // 2
+                    while len(result) < target_count:
+                        result.insert(middle_idx, region_crops[middle_idx])
+                    return result
+            
+            # Sample each region
+            sampled_begin = pad_region(begin_crops, num_begin)
+            sampled_middle = pad_region(middle_crops, num_middle)
+            sampled_end = pad_region(end_crops, num_end)
+            
+            # Combine in order
+            selected_crops = [crop for _, crop in (sampled_begin + sampled_middle + sampled_end)]
+            
+            print(f"   ✅ Padded using 10/80/10: {len(sampled_begin)} begin + {len(sampled_middle)} middle + {len(sampled_end)} end")
+        
+        else:
+            # ⬅️ ENOUGH CROPS: Apply 10/80/10 sampling
+            print(f"✅ Found {len(candidates)} crops, sampling {target_frames} using 10/80/10 strategy...")
+            
+            candidates.sort(key=lambda t: t[0])
+            total_crops = len(candidates)
+            
+            # Calculate split indices
+            begin_end_idx = int(total_crops * 0.10)
+            middle_end_idx = int(total_crops * 0.90)
+            
+            # Split into regions
+            begin_crops = candidates[:begin_end_idx]
+            middle_crops = candidates[begin_end_idx:middle_end_idx]
+            end_crops = candidates[middle_end_idx:]
+            
+            # Calculate target counts
+            num_begin = int(target_frames * 0.10)  # 2
+            num_middle = int(target_frames * 0.80)  # 16
+            num_end = target_frames - num_begin - num_middle  # 2
+            
+            print(f"   📊 Sampling: {num_begin} from begin, {num_middle} from middle, {num_end} from end")
+            
+            # Sample uniformly from each region
+            def sample_region(region_crops, num_samples):
+                if len(region_crops) == 0:
+                    return []
+                if len(region_crops) <= num_samples:
+                    return region_crops
+                indices = np.linspace(0, len(region_crops) - 1, num_samples, dtype=int)
+                return [region_crops[i] for i in indices]
+            
+            sampled_begin = sample_region(begin_crops, num_begin)
+            sampled_middle = sample_region(middle_crops, num_middle)
+            sampled_end = sample_region(end_crops, num_end)
+            
+            # Handle edge cases: if region too small, borrow from middle
+            if len(sampled_begin) < num_begin:
+                deficit = num_begin - len(sampled_begin)
+                sampled_middle = sample_region(middle_crops, num_middle + deficit)
+                print(f"   ⚠️ Begin region too small, borrowed {deficit} from middle")
+            
+            if len(sampled_end) < num_end:
+                deficit = num_end - len(sampled_end)
+                sampled_middle = sample_region(middle_crops, num_middle + deficit)
+                print(f"   ⚠️ End region too small, borrowed {deficit} from middle")
+            
+            # Combine crops in temporal order
+            selected_crops = [crop for _, crop in (sampled_begin + sampled_middle + sampled_end)]
 
         # Save crops
         req_dir = TEMP_DIR / f"video_{uuid.uuid4().hex}"
         req_dir.mkdir(parents=True, exist_ok=True)
 
         crop_paths = []
-        for i, crop in enumerate(selected):
+        for i, crop in enumerate(selected_crops):
             out_path = req_dir / f"frame_{i:03d}_crop.jpg"
             cv2.imwrite(str(out_path), crop)
             crop_paths.append(str(out_path))
 
-        print(f"[3/3] Extracted {len(crop_paths)} cropped hand frames")
+        print(f"[3/3] Extracted {len(crop_paths)} cropped hand frames using 10/80/10 strategy")
         return {
             "status": "success",
             "cropped_images": crop_paths,
             "count": len(crop_paths),
             "total_frames": total_frames,
+            "sampling_strategy": "10/80/10"  # ⬅️ NEW
         }
 
     except Exception as e:
         traceback.print_exc()
         return {"status": "error", "error": f"{type(e).__name__}: {e}"}
+    
 def classify_cropped_images(image_paths: list) -> dict:
     """
     Classify a sequence of cropped images.
