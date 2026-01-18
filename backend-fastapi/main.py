@@ -491,14 +491,12 @@ async def receive_frame(
 
 
 
-
-
 @app.post("/api/live/stop")
 async def stop_capture(session_id: str = Form(...)):
     """
     OPTIMIZED: Stop capture, then batch-process all frames with YOLO.
     Extract exactly SEQ_LEN hand crops IN SEQUENCE for classification.
-    NOW USES 10/80/10 SAMPLING STRATEGY (beginning/middle/end).
+    NOW USES 10/80/10 PADDING & SAMPLING STRATEGY (duplicates from middle region).
     """
     try:
         # Get session
@@ -532,7 +530,7 @@ async def stop_capture(session_id: str = Form(...)):
                 "hand_frames": 0
             }
         
-        # ⬅️ PROCESS ALL FRAMES AT ORIGINAL SIZE - DETECT BOTH HANDS
+        # ⬅️ PROCESS ALL FRAMES AT ORIGINAL SIZE - DETECT UP TO 2 HANDS
         print(f"🔍 Processing {total_frames} frames with YOLO (at original resolution)...")
         
         all_hand_crops = []
@@ -546,9 +544,9 @@ async def stop_capture(session_id: str = Form(...)):
                 continue
             
             h, w = frame.shape[:2]
-            boxes_sorted = sorted(boxes, key=lambda b: b["x1"])
+            # Sort left-to-right, take up to 2 hands
+            boxes_sorted = sorted(boxes, key=lambda b: b["x1"])[:2]
             
-            frame_crops = []
             for box in boxes_sorted:
                 x1 = int(box["x1"])
                 y1 = int(box["y1"])
@@ -563,20 +561,14 @@ async def stop_capture(session_id: str = Form(...)):
                 
                 crop = frame[y1:y2, x1:x2]
                 if crop.size > 0:
-                    frame_crops.append(crop.copy())
-            
-            if len(frame_crops) > 0:
-                all_hand_crops.extend(frame_crops)
-                frame_indices.extend([idx] * len(frame_crops))
-                crop_timestamps.extend([timestamps[idx] if idx < len(timestamps) else 0] * len(frame_crops))
+                    all_hand_crops.append(crop.copy())
+                    frame_indices.append(idx)
+                    crop_timestamps.append(timestamps[idx] if idx < len(timestamps) else 0)
         
         print(f"   ✅ Detected {len(all_hand_crops)} hand crops across {len(set(frame_indices))} frames")
         print(f"   Hands per frame: {len(all_hand_crops) / max(len(set(frame_indices)), 1):.1f} average")
         
-        # ⬅️ NEW: 10/80/10 SAMPLING STRATEGY
-        selected_crops = []
-        selected_timestamps = []
-        
+        # ⬅️ Handle no hands detected
         if len(all_hand_crops) == 0:
             return {
                 "ok": False,
@@ -585,99 +577,150 @@ async def stop_capture(session_id: str = Form(...)):
                 "hand_frames": 0
             }
         
+        # ⬅️ NEW: 10/80/10 PADDING & SAMPLING STRATEGY
+        selected_crops = []
+        selected_timestamps = []
+        
         if len(all_hand_crops) < SEQ_LEN:
-            # Not enough crops - pad with last crop
-            original_count = len(all_hand_crops)
-            selected_crops = all_hand_crops.copy()
-            selected_timestamps = crop_timestamps.copy()
+            # ⬅️ INSUFFICIENT CROPS: Use 10/80/10 PADDING (duplicate from middle)
+            print(f"⚠️  Only {len(all_hand_crops)} crops found, padding to {SEQ_LEN} using 10/80/10 strategy...")
             
-            while len(selected_crops) < SEQ_LEN:
-                selected_crops.append(selected_crops[-1])
-                selected_timestamps.append(selected_timestamps[-1])
+            # Sort by temporal order (timestamps or frame indices)
+            if crop_timestamps and any(t > 0 for t in crop_timestamps):
+                crops_with_data = sorted(zip(all_hand_crops, crop_timestamps, frame_indices), key=lambda x: x[1])
+            else:
+                crops_with_data = sorted(zip(all_hand_crops, crop_timestamps, frame_indices), key=lambda x: x[2])
             
-            message = f"⚠️ Only {original_count} hand crops detected. Padded to {SEQ_LEN}."
-            print(f"   {message}")
+            all_hand_crops = [c for c, _, _ in crops_with_data]
+            crop_timestamps = [t for _, t, _ in crops_with_data]
+            
+            # Calculate 10/80/10 split indices
+            total_crops = len(all_hand_crops)
+            begin_end_idx = max(1, int(total_crops * 0.10))  # First 10%
+            middle_start_idx = begin_end_idx
+            middle_end_idx = max(middle_start_idx + 1, total_crops - begin_end_idx)  # Last 10%
+            
+            # Extract regions
+            begin_crops = all_hand_crops[:begin_end_idx]
+            begin_timestamps = crop_timestamps[:begin_end_idx]
+            
+            middle_crops = all_hand_crops[middle_start_idx:middle_end_idx]
+            middle_timestamps = crop_timestamps[middle_start_idx:middle_end_idx]
+            
+            end_crops = all_hand_crops[middle_end_idx:]
+            end_timestamps = crop_timestamps[middle_end_idx:]
+            
+            print(f"   📦 Regions: {len(begin_crops)} begin, {len(middle_crops)} middle, {len(end_crops)} end")
+            
+            # Calculate target counts for each region
+            num_begin = int(SEQ_LEN * 0.10)  # 2 frames
+            num_end = int(SEQ_LEN * 0.10)    # 2 frames
+            num_middle = SEQ_LEN - num_begin - num_end  # 16 frames
+            
+            # Pad region by duplicating from middle of region
+            def pad_region(region_crops, region_timestamps, target_count):
+                """Sample or pad a region to reach target_count by duplicating middle crops."""
+                if len(region_crops) == 0:
+                    return [], []
+                if len(region_crops) >= target_count:
+                    # Uniform sampling
+                    indices = np.linspace(0, len(region_crops) - 1, target_count, dtype=int)
+                    return [region_crops[i] for i in indices], [region_timestamps[i] for i in indices]
+                else:
+                    # Pad by duplicating middle crops
+                    result_crops = region_crops.copy()
+                    result_timestamps = region_timestamps.copy()
+                    middle_idx = len(region_crops) // 2
+                    
+                    while len(result_crops) < target_count:
+                        # Insert duplicate at middle position
+                        result_crops.insert(middle_idx + 1, region_crops[middle_idx].copy())
+                        result_timestamps.insert(middle_idx + 1, region_timestamps[middle_idx])
+                    
+                    return result_crops, result_timestamps
+            
+            # Sample/pad each region
+            sampled_begin, sampled_begin_ts = pad_region(begin_crops, begin_timestamps, num_begin)
+            sampled_middle, sampled_middle_ts = pad_region(middle_crops, middle_timestamps, num_middle)
+            sampled_end, sampled_end_ts = pad_region(end_crops, end_timestamps, num_end)
+            
+            # Combine in temporal order
+            selected_crops = sampled_begin + sampled_middle + sampled_end
+            selected_timestamps = sampled_begin_ts + sampled_middle_ts + sampled_end_ts
+            
+            print(f"   ✅ Padded using 10/80/10: {len(sampled_begin)} begin + {len(sampled_middle)} middle + {len(sampled_end)} end")
+            
+            message = f"⚠️ Only {total_crops} hand crops detected. Padded to {SEQ_LEN} using 10/80/10 (middle duplication)."
         
         else:
-            # ⬅️ APPLY 10/80/10 SAMPLING STRATEGY
+            # ⬅️ SUFFICIENT CROPS: Apply 10/80/10 SAMPLING
+            print(f"✅ Found {len(all_hand_crops)} crops, sampling {SEQ_LEN} using 10/80/10 strategy...")
+            
+            # Sort by temporal order
+            if crop_timestamps and any(t > 0 for t in crop_timestamps):
+                crops_with_data = sorted(zip(all_hand_crops, crop_timestamps, frame_indices), key=lambda x: x[1])
+            else:
+                crops_with_data = sorted(zip(all_hand_crops, crop_timestamps, frame_indices), key=lambda x: x[2])
+            
+            all_hand_crops = [c for c, _, _ in crops_with_data]
+            crop_timestamps = [t for _, t, _ in crops_with_data]
+            
             total_crops = len(all_hand_crops)
             
-            # Calculate split counts (10% / 80% / 10%)
-            num_begin = int(SEQ_LEN * 0.10)  # 2 frames
-            num_middle = int(SEQ_LEN * 0.80)  # 16 frames
-            num_end = SEQ_LEN - num_begin - num_middle  # 2 frames (ensure exact SEQ_LEN)
+            # Calculate split indices (10% / 80% / 10%)
+            begin_end_idx = max(1, int(total_crops * 0.10))
+            middle_end_idx = max(begin_end_idx + 1, int(total_crops * 0.90))
             
-            print(f"   📊 10/80/10 Sampling: {num_begin} beginning + {num_middle} middle + {num_end} end = {SEQ_LEN}")
+            # Split into regions
+            begin_crops = all_hand_crops[:begin_end_idx]
+            begin_timestamps = crop_timestamps[:begin_end_idx]
             
-            # Define temporal regions based on crop timestamps
-            if crop_timestamps:
-                min_time = min(crop_timestamps)
-                max_time = max(crop_timestamps)
-                time_range = max_time - min_time
-                
-                # Time boundaries: 10% | 80% | 10%
-                begin_end_time = min_time + (time_range * 0.10)
-                middle_end_time = min_time + (time_range * 0.90)
-                
-                print(f"   ⏱️ Time range: {time_range:.2f}s")
-                print(f"   ⏱️ Begin: 0.00s - {begin_end_time - min_time:.2f}s")
-                print(f"   ⏱️ Middle: {begin_end_time - min_time:.2f}s - {middle_end_time - min_time:.2f}s")
-                print(f"   ⏱️ End: {middle_end_time - min_time:.2f}s - {time_range:.2f}s")
-                
-                # Split crops into temporal regions
-                begin_crops = [(i, c, t) for i, (c, t) in enumerate(zip(all_hand_crops, crop_timestamps)) 
-                              if t < begin_end_time]
-                middle_crops = [(i, c, t) for i, (c, t) in enumerate(zip(all_hand_crops, crop_timestamps)) 
-                               if begin_end_time <= t < middle_end_time]
-                end_crops = [(i, c, t) for i, (c, t) in enumerate(zip(all_hand_crops, crop_timestamps)) 
-                            if t >= middle_end_time]
-                
-                print(f"   📦 Region crops: {len(begin_crops)} begin, {len(middle_crops)} middle, {len(end_crops)} end")
-                
-                # Sample uniformly from each region
-                def sample_region(region_crops, num_samples):
-                    if len(region_crops) == 0:
-                        return []
-                    if len(region_crops) <= num_samples:
-                        return region_crops
-                    indices = np.linspace(0, len(region_crops) - 1, num_samples, dtype=int)
-                    return [region_crops[i] for i in indices]
-                
-                sampled_begin = sample_region(begin_crops, num_begin)
-                sampled_middle = sample_region(middle_crops, num_middle)
-                sampled_end = sample_region(end_crops, num_end)
-                
-                # Handle edge cases: if a region has no crops, borrow from middle
-                if len(sampled_begin) < num_begin:
-                    deficit = num_begin - len(sampled_begin)
-                    sampled_middle = sample_region(middle_crops, num_middle + deficit)
-                    print(f"   ⚠️ Begin region has only {len(sampled_begin)} crops, borrowed {deficit} from middle")
-                
-                if len(sampled_end) < num_end:
-                    deficit = num_end - len(sampled_end)
-                    sampled_middle = sample_region(middle_crops, num_middle + deficit)
-                    print(f"   ⚠️ End region has only {len(sampled_end)} crops, borrowed {deficit} from middle")
-                
-                # Combine in order: begin -> middle -> end
-                sampled_all = sampled_begin + sampled_middle + sampled_end
-                
-                # Extract crops and timestamps (sorted by original index to preserve order)
-                sampled_all_sorted = sorted(sampled_all, key=lambda x: x[0])
-                selected_crops = [crop for _, crop, _ in sampled_all_sorted]
-                selected_timestamps = [ts for _, _, ts in sampled_all_sorted]
-                
-                print(f"   ✅ Sampled {len(selected_crops)} crops using 10/80/10 strategy")
-                print(f"   📊 Crop indices: {[idx for idx, _, _ in sampled_all_sorted]}")
-                
-                message = f"✅ Sampled {SEQ_LEN} crops using 10/80/10 strategy (begin/middle/end)"
+            middle_crops = all_hand_crops[begin_end_idx:middle_end_idx]
+            middle_timestamps = crop_timestamps[begin_end_idx:middle_end_idx]
             
-            else:
-                # Fallback: no timestamps, use uniform sampling
-                print("   ⚠️ No timestamps available, falling back to uniform sampling")
-                indices = np.linspace(0, len(all_hand_crops) - 1, SEQ_LEN, dtype=int)
-                selected_crops = [all_hand_crops[i] for i in indices]
-                selected_timestamps = [crop_timestamps[i] if i < len(crop_timestamps) else 0 for i in indices]
-                message = f"✅ Sampled {SEQ_LEN} crops uniformly (no timestamps)"
+            end_crops = all_hand_crops[middle_end_idx:]
+            end_timestamps = crop_timestamps[middle_end_idx:]
+            
+            print(f"   📦 Region crops: {len(begin_crops)} begin, {len(middle_crops)} middle, {len(end_crops)} end")
+            
+            # Calculate target counts
+            num_begin = int(SEQ_LEN * 0.10)  # 2
+            num_middle = int(SEQ_LEN * 0.80)  # 16
+            num_end = SEQ_LEN - num_begin - num_middle  # 2
+            
+            print(f"   📊 Sampling: {num_begin} from begin, {num_middle} from middle, {num_end} from end")
+            
+            # Sample uniformly from each region
+            def sample_region(region_crops, region_timestamps, num_samples):
+                if len(region_crops) == 0:
+                    return [], []
+                if len(region_crops) <= num_samples:
+                    return region_crops, region_timestamps
+                indices = np.linspace(0, len(region_crops) - 1, num_samples, dtype=int)
+                return [region_crops[i] for i in indices], [region_timestamps[i] for i in indices]
+            
+            sampled_begin, sampled_begin_ts = sample_region(begin_crops, begin_timestamps, num_begin)
+            sampled_middle, sampled_middle_ts = sample_region(middle_crops, middle_timestamps, num_middle)
+            sampled_end, sampled_end_ts = sample_region(end_crops, end_timestamps, num_end)
+            
+            # Handle edge cases: if region too small, borrow from middle
+            if len(sampled_begin) < num_begin:
+                deficit = num_begin - len(sampled_begin)
+                sampled_middle, sampled_middle_ts = sample_region(middle_crops, middle_timestamps, num_middle + deficit)
+                print(f"   ⚠️ Begin region too small, borrowed {deficit} from middle")
+            
+            if len(sampled_end) < num_end:
+                deficit = num_end - len(sampled_end)
+                sampled_middle, sampled_middle_ts = sample_region(middle_crops, middle_timestamps, num_middle + deficit)
+                print(f"   ⚠️ End region too small, borrowed {deficit} from middle")
+            
+            # Combine in temporal order
+            selected_crops = sampled_begin + sampled_middle + sampled_end
+            selected_timestamps = sampled_begin_ts + sampled_middle_ts + sampled_end_ts
+            
+            print(f"   ✅ Sampled {len(selected_crops)} crops using 10/80/10 strategy")
+            
+            message = f"✅ Sampled {SEQ_LEN} crops using 10/80/10 strategy (begin/middle/end)"
         
         # Convert crops to base64
         cropped_b64 = []
@@ -687,10 +730,11 @@ async def stop_capture(session_id: str = Form(...)):
             cropped_b64.append(f"data:image/jpeg;base64,{crop_b64}")
         
         # Calculate timing statistics
-        if selected_timestamps:
+        if selected_timestamps and any(t > 0 for t in selected_timestamps):
             start_time = session["start_time"]
             relative_timestamps = [t - start_time for t in selected_timestamps]
-            avg_fps = len(cropped_b64) / (relative_timestamps[-1] - relative_timestamps[0]) if len(relative_timestamps) > 1 else 0
+            time_span = relative_timestamps[-1] - relative_timestamps[0]
+            avg_fps = len(cropped_b64) / time_span if time_span > 0 else 0
         else:
             relative_timestamps = []
             avg_fps = 0
@@ -714,7 +758,7 @@ async def stop_capture(session_id: str = Form(...)):
             "relative_timestamps": relative_timestamps,
             "duration": duration,
             "avg_fps": round(avg_fps, 2),
-            "sampling_strategy": "10/80/10",  # ⬅️ UPDATED: Changed to 10/80/10
+            "sampling_strategy": "10/80/10",
             "message": message
         }
     
