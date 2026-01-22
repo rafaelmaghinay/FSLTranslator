@@ -29,7 +29,7 @@ export default function About({ onBack }) {
         <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-md p-8">
             <div className="text-center mb-8">
                 <img
-                    src="/fsl-logo.png"
+                    src="/logo.png"
                     alt="Filipino Sign Language Logo"
                     className="w-48 h-48 mx-auto mb-4"
                 />
