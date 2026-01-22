@@ -27,7 +27,7 @@ IMG_SIZE = 224
 LSTM_HIDDEN = 128
 CLASSIFIER_DROPOUT = 0.4
 
-CLASS_NAMES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "GoodAfternoon", "GoodEvening", "GoodMorning", "Hello", "HowAreYou", "Imfine", "Sorry", "ThankYou", "WhatsYourName", "YoureWelcome"]
+CLASS_NAMES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "1", "2", "3", "4", "5", "6", "7", "8", "9", "GoodAfternoon", "GoodEvening", "GoodMorning", "HowAreYou", "Imfine", "Sorry", "ThankYou", "YoureWelcome"]
 NUM_CLASSES = len(CLASS_NAMES)
 
 YOLO_BATCH_SIZE = 8
@@ -99,7 +99,7 @@ clf = ResNet34_BiLSTM(
 )
 
 try:
-    checkpoint = torch.load("models/bilstm_best_test9.pth", map_location='cpu', weights_only=False)
+    checkpoint = torch.load("models/bilstm_best_test10.pth", map_location='cpu', weights_only=False)
     if 'model_state_dict' in checkpoint:
         clf.load_state_dict(checkpoint['model_state_dict'])
     else:

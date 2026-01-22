@@ -98,41 +98,6 @@ def health():
 # UPLOAD & CROP ENDPOINTS
 # ============================================================
 
-@app.post("/api/upload/image")
-async def upload_image(image: UploadFile = File(...)):
-    """Upload single image, detect hand, return cropped image as base64."""
-    if not image.content_type or not image.content_type.startswith("image/"):
-        raise HTTPException(400, "Only image files allowed")
-
-    ext = Path(image.filename).suffix
-    filename = f"{int(time.time()*1000)}_{Path(image.filename).stem}{ext}"
-    path = IMG_DIR / filename
-
-    save_file(image, path)
-    
-    # Process: detect hand and crop
-    result = process_single_image(str(path))
-    
-    if result["status"] == "success":
-        # Convert cropped image to base64
-        with open(result["cropped_image_path"], "rb") as f:
-            img_data = base64.b64encode(f.read()).decode()
-            cropped_base64 = f"data:image/jpeg;base64,{img_data}"
-        
-        return {
-            "ok": True,
-            "type": "image",
-            "saved_as": filename,
-            "cropped_image": cropped_base64  # ⬅️ Base64 string
-        }
-    elif result["status"] == "no_hand_detected":
-        return {
-            "ok": False,
-            "type": "image",
-            "error": "No hand detected in image"
-        }
-    else:
-        raise HTTPException(500, result.get("error", "Unknown error"))
 
 @app.post("/api/upload/sequence")
 async def upload_sequence(images: List[UploadFile] = File(...)):

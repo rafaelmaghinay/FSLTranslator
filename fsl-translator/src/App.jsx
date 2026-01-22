@@ -1,75 +1,86 @@
-// File: `src/App.jsx`
-import './App.css';
+import React, { useState } from 'react';
 import NavigationBar from './components/NavigationBar.jsx';
 import Upload from './components/Upload.jsx';
 import StartAnalysis from './components/StartAnalysis.jsx';
 import Results from './components/Results.jsx';
 import LiveCamera from './components/LiveCamera.jsx';
-import { useState } from 'react';
+import About from './components/About.jsx';
 
-export default function App() {
-    const [uploaded, setUploaded] = useState(null); // { urls: [], paths: [], type }
+function App() {
+    const [view, setView] = useState('upload');
+    const [uploadedData, setUploadedData] = useState(null);
     const [result, setResult] = useState(null);
-    const [liveActive, setLiveActive] = useState(false);
 
-    const handleUploaded = (payload) => {
-        setUploaded(payload);
+    const reset = () => {
+        setView('upload');
+        setUploadedData(null);
         setResult(null);
     };
 
-    const handleStartResults = (res) => {
+    const handleUploaded = (data) => {
+        setUploadedData(data);
+        setView('start');
+    };
+
+    const handleResults = (res) => {
         setResult(res);
-    };
-
-    const handleClearAll = () => {
-        setUploaded(null);
-        setResult(null);
-        setLiveActive(false);
+        setView('results');
     };
 
     const handleStartLive = () => {
-        setUploaded(null);
-        setResult(null);
-        setLiveActive(true);
+        setView('live');
     };
 
-    const handleLiveBack = () => {
-        // called when LiveCamera signals back; clear live mode and any results
-        setLiveActive(false);
-        setUploaded(null);
-        setResult(null);
+    const handleAbout = () => {
+        setView('about');
     };
 
     return (
-        <main>
-            <div className="wrapper">
-                <header className="App-header">
-                    <NavigationBar />
-                </header>
+        <div className="min-h-screen bg-gray-50">
+            <NavigationBar onAboutClick={handleAbout} onHomeClick={reset} />
 
-                <section className="hero py-12 bg-gray-50 mt-10">
-                    <div className="max-w-5xl mx-auto text-center px-4">
-                        <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900">
-                            Filipino Sign Language Recognizer AI
-                        </h2>
-                        <p className="mt-4 text-lg text-gray-600">AI-powered Sign Language Recognizer for Filipino Sign Language</p>
+            <div className="pt-20 px-4 pb-8">
+                <h1 className="text-4xl font-bold text-center text-gray-900 mb-2">
+                    FSL Recognition System
+                </h1>
+                <p className="text-center text-gray-600 mb-8">
+                    Filipino Sign Language Translation
+                </p>
 
-                        <div className="mt-12">
-                            {liveActive ? (
-                                <LiveCamera onResults={handleStartResults} onBack={handleLiveBack} />
-                            ) : (
-                                !uploaded && !result ? (
-                                    <Upload onUploaded={handleUploaded} onStartLive={handleStartLive} />
-                                ) : uploaded && !result ? (
-                                    <StartAnalysis urls={uploaded.urls} paths={uploaded.paths} onResults={handleStartResults} onBack={handleClearAll} />
-                                ) : result ? (
-                                    <Results urls={uploaded ? uploaded.urls : []} result={result} onBack={handleClearAll} />
-                                ) : null
-                            )}
-                        </div>
-                    </div>
-                </section>
+                {view === 'upload' && (
+                    <Upload
+                        onUploaded={handleUploaded}
+                        onStartLive={handleStartLive}
+                    />
+                )}
+
+                {view === 'start' && uploadedData && (
+                    <StartAnalysis
+                        urls={uploadedData.urls}
+                        paths={uploadedData.paths}
+                        onResults={handleResults}
+                        onBack={reset}
+                    />
+                )}
+
+                {view === 'results' && (
+                    <Results
+                        urls={uploadedData?.urls || []}
+                        result={result}
+                        onBack={reset}
+                    />
+                )}
+
+                {view === 'live' && (
+                    <LiveCamera onBack={reset} />
+                )}
+
+                {view === 'about' && (
+                    <About onBack={reset} />
+                )}
             </div>
-        </main>
+        </div>
     );
 }
+
+export default App;
