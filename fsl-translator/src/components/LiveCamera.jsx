@@ -466,7 +466,7 @@ export default function LiveCamera({ onResults, onBack }) {
             <div className="text-left mt-4">
                 <div className="text-xs text-gray-500">Status</div>
                 <div className="font-medium text-gray-800">
-                    {streaming ? (recording ? `Recording... (${frameCount} hand frames)` : 'Camera active') : 'Camera stopped'}
+                    {streaming ? (recording ? `Recording... (${frameCount} frames)` : 'Camera active') : 'Camera stopped'}
                 </div>
             </div>
 
