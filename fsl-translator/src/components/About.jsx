@@ -1,5 +1,4 @@
 import React from 'react';
-import BackButton from './BackButton.jsx';
 
 export default function About({ onBack }) {
     const objectives = [
@@ -116,7 +115,14 @@ export default function About({ onBack }) {
             </div>
 
             <div className="flex justify-center">
-                <BackButton onClick={onBack} />
+                <a
+                    href="https://docs.google.com/document/d/15z191jHH7Q3Q8gj7ezn9YD1IHHtAygir/edit"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors duration-200"
+                >
+                    📄 View Full Thesis Document
+                </a>
             </div>
         </div>
     );

@@ -85,10 +85,6 @@ export default function Results({ urls = [], result = null, loading = false, err
                                 )}
                             </div>
 
-                            <div>
-                                <div className="text-xs text-gray-500 mb-2">Metadata</div>
-                                {renderMeta(result.metadata)}
-                            </div>
                         </div>
                     ) : (
                         <div className="text-gray-600">No results yet</div>

@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function BackButton({ onClick, label = 'Back', disabled = false }) {
+export default function BackButton({ onClick, label = 'Home', disabled = false }) {
     return (
         <button
             onClick={onClick}
