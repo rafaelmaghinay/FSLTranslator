@@ -20,7 +20,7 @@ UPLOADS_DIR = BASE_DIR / "uploads"
 TEMP_DIR = UPLOADS_DIR / "temp"
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
-SEQ_LEN = 20  # ⚠️ CHANGED FROM 12 TO 20 - MUST MATCH TRAINING!
+SEQ_LEN = 20 
 IMG_SIZE = 224
 CLASS_NAMES = [
     # A-Z (26 letters)
@@ -28,13 +28,13 @@ CLASS_NAMES = [
     'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 
     'U', 'V', 'W', 'X', 'Y', 'Z',
     
-    # 1-9 (9 digits)
-    '1', '2', '3', '4', '5', '6', '7', '8', '9',
+    # Numbers (9 digits - spelled out)
+    'eight', 'five', 'four', 'nine', 'one', 'seven', 'six', 'three', 'two',
     
     # Phrases (8 phrases)
     'GoodAfternoon', 'GoodEvening', 'GoodMorning', 
     'HowAreYou', 'Imfine', 'Sorry', 'ThankYou', 
-     'YoureWelcome'
+    'YoureWelcome'
 ]
 
 CONFIDENCE_THRESHOLD = 0.5
