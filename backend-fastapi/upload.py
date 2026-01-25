@@ -27,7 +27,52 @@ IMG_SIZE = 224
 LSTM_HIDDEN = 128
 CLASSIFIER_DROPOUT = 0.4
 
-CLASS_NAMES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "eight", "five", "four", "nine", "one", "seven", "six", "three", "two", "GoodAfternoon", "GoodEvening", "GoodMorning", "HowAreYou", "Imfine", "Sorry", "ThankYou", "YoureWelcome"]
+CLASS_NAMES = [
+    "alphabets_A",  # Index 0
+    "alphabets_B",  # Index 1
+    "alphabets_C",  # Index 2
+    "alphabets_D",  # Index 3
+    "alphabets_E",  # Index 4
+    "alphabets_F",  # Index 5
+    "alphabets_G",  # Index 6
+    "alphabets_H",  # Index 7
+    "alphabets_I",  # Index 8
+    "alphabets_J",  # Index 9
+    "alphabets_K",  # Index 10
+    "alphabets_L",  # Index 11
+    "alphabets_M",  # Index 12
+    "alphabets_N",  # Index 13
+    "alphabets_O",  # Index 14
+    "alphabets_P",  # Index 15
+    "alphabets_Q",  # Index 16
+    "alphabets_R",  # Index 17
+    "alphabets_S",  # Index 18
+    "alphabets_T",  # Index 19
+    "alphabets_U",  # Index 20
+    "alphabets_V",  # Index 21
+    "alphabets_W",  # Index 22
+    "alphabets_X",  # Index 23
+    "alphabets_Y",  # Index 24
+    "alphabets_Z",  # Index 25
+    "digits_eight",  # Index 26
+    "digits_five",  # Index 27
+    "digits_four",  # Index 28
+    "digits_nine",  # Index 29
+    "digits_one",  # Index 30
+    "digits_seven",  # Index 31
+    "digits_six",  # Index 32
+    "digits_three",  # Index 33
+    "digits_two",  # Index 34
+    "phrases_GoodAfternoon",  # Index 35
+    "phrases_GoodEvening",  # Index 36
+    "phrases_GoodMorning",  # Index 37
+    "phrases_HowAreYou",  # Index 38
+    "phrases_Imfine",  # Index 39
+    "phrases_Sorry",  # Index 40
+    "phrases_ThankYou",  # Index 41
+    "phrases_YoureWelcome",  # Index 42
+]
+
 NUM_CLASSES = len(CLASS_NAMES)
 
 YOLO_BATCH_SIZE = 8
@@ -99,7 +144,7 @@ clf = ResNet34_BiLSTM(
 )
 
 try:
-    checkpoint = torch.load("models/bilstm_best_test11.pth", map_location='cpu', weights_only=False)
+    checkpoint = torch.load("models/bilstm_best_test13.pth", map_location='cpu', weights_only=False)
     if 'model_state_dict' in checkpoint:
         clf.load_state_dict(checkpoint['model_state_dict'])
     else:

@@ -312,7 +312,7 @@ export default function LiveCamera({ onResults, onBack }) {
         }, 150);
     };
 
-    // Stop capturing and get cropped images
+
     const handleStopCapture = async () => {
         try {
             setLoading(true);
@@ -325,6 +325,7 @@ export default function LiveCamera({ onResults, onBack }) {
             }
 
             if (!sessionId) {
+                setRecording(false); // Reset recording state even if no session
                 throw new Error('No session ID');
             }
 
@@ -345,6 +346,11 @@ export default function LiveCamera({ onResults, onBack }) {
             setCroppedUrls(data.cropped_images || []);
             setRecording(false);
 
+            // Show message if no hands detected
+            if (!data.cropped_images || data.cropped_images.length === 0) {
+                setError('No hands detected. Please try again.');
+            }
+
             // Pass results to parent
             if (onResults) {
                 onResults(data.cropped_images);
@@ -353,7 +359,9 @@ export default function LiveCamera({ onResults, onBack }) {
         } catch (err) {
             console.error('Failed to stop capture:', err);
             setError(err.message);
+            setRecording(false); // Always reset recording state
         } finally {
+            setSessionId(null); // Always reset session ID to allow new captures
             setLoading(false);
         }
     };
