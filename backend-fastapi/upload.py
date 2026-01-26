@@ -156,7 +156,7 @@ except Exception as e:
 
 clf.eval()
 
-detector = YOLO("models/yolo.pt")
+detector = YOLO("models/yolo_best.pt")
 print("✅ YOLO detector loaded")
 print("✅ All models ready\n")
 

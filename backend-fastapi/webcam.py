@@ -15,7 +15,7 @@ from pathlib import Path
 from functools import lru_cache
 
 BASE_DIR = Path(__file__).resolve().parent
-YOLO_MODEL_PATH = BASE_DIR / "models" / "yolo.pt"
+YOLO_MODEL_PATH = BASE_DIR / "models" / "yolo_best.pt"
 UPLOADS_DIR = BASE_DIR / "uploads"  
 TEMP_DIR = UPLOADS_DIR / "temp"
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
