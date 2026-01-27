@@ -165,6 +165,38 @@ print("✅ All models ready\n")
 # CORE PROCESSING FUNCTIONS
 # ============================================================
 
+def clean_class_name(class_name: str) -> str:
+    """
+    Convert 'alphabets_A' -> 'A', 'digits_one' -> '1', 'phrases_Sorry' -> 'Sorry'
+    """
+    # Handle digits
+    digit_map = {
+        "digits_zero": "0",
+        "digits_one": "1",
+        "digits_two": "2",
+        "digits_three": "3",
+        "digits_four": "4",
+        "digits_five": "5",
+        "digits_six": "6",
+        "digits_seven": "7",
+        "digits_eight": "8",
+        "digits_nine": "9"
+    }
+    
+    if class_name in digit_map:
+        return digit_map[class_name]
+    
+    # Handle alphabets: "alphabets_A" -> "A"
+    if class_name.startswith("alphabets_"):
+        return class_name.replace("alphabets_", "")
+    
+    # Handle phrases: "phrases_Sorry" -> "Sorry"
+    if class_name.startswith("phrases_"):
+        return class_name.replace("phrases_", "")
+    
+    # Fallback: return as-is
+    return class_name
+
 def detect_and_crop(frame):
     """Detect hand in single frame and crop it."""
     results = detector(frame, stream=True, verbose=False)
@@ -536,7 +568,7 @@ def classify_cropped_images(image_paths: list) -> dict:
             "status": "success" | "error",
             "prediction": str,
             "confidence": float,
-            "top_3": list of dict with {label, confidence},  # ⬅️ NEW
+            "top_3": list of dict with {label, confidence},
             "frames_used": int,
             "error": str (if error)
         }
@@ -574,7 +606,6 @@ def classify_cropped_images(image_paths: list) -> dict:
         
         print(f"[2/2] Classifying {len(selected_tensors)} frames...")
         
-        # ⬅️ MODIFIED: Get top 3 predictions
         seq = torch.stack(selected_tensors).unsqueeze(0)
         with torch.no_grad():
             out = clf(seq)
@@ -583,14 +614,15 @@ def classify_cropped_images(image_paths: list) -> dict:
             # Get top 3 predictions
             top3_probs, top3_indices = torch.topk(probs[0], 3)
             
-            # Top 1 (best prediction)
-            pred = CLASS_NAMES[top3_indices[0].item()]
+            # Top 1 (best prediction) - CLEAN IT
+            raw_pred = CLASS_NAMES[top3_indices[0].item()]
+            pred = clean_class_name(raw_pred)  # ⬅️ CLEAN HERE
             conf = float(top3_probs[0].item())
             
-            # Top 3 results
+            # Top 3 results - CLEAN THEM TOO
             top_3 = [
                 {
-                    "label": CLASS_NAMES[top3_indices[i].item()],
+                    "label": clean_class_name(CLASS_NAMES[top3_indices[i].item()]),  # ⬅️ CLEAN HERE
                     "confidence": round(float(top3_probs[i].item()), 4)
                 }
                 for i in range(3)
@@ -605,7 +637,7 @@ def classify_cropped_images(image_paths: list) -> dict:
             "status": "success",
             "prediction": pred,
             "confidence": conf,
-            "top_3": top_3,  # ⬅️ NEW: Return top 3
+            "top_3": top_3,
             "frames_used": len(selected_tensors)
         }
     except Exception as e:
