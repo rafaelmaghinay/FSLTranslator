@@ -17,7 +17,7 @@ UPLOADS_DIR = BASE_DIR / "uploads"
 TEMP_DIR = UPLOADS_DIR / "temp"
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
-CLASS_NAMES = [
+CLASS_NAMES =  [
     "alphabets_A",  # Index 0
     "alphabets_B",  # Index 1
     "alphabets_C",  # Index 2
