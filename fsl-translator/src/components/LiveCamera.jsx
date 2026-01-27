@@ -58,8 +58,8 @@ export default function LiveCamera({ onResults, onBack }) {
             // Request exactly 640x640 resolution
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: {
-                    width: { ideal: 640 },
-                    height: { ideal: 640 },
+                    width: {ideal: 640},
+                    height: {ideal: 640},
                     facingMode: 'user'
                 }
             });
@@ -422,30 +422,34 @@ export default function LiveCamera({ onResults, onBack }) {
         <div className="max-w-3xl mx-auto bg-white rounded shadow p-4 text-center">
             <h3 className="text-2xl font-semibold mb-4">Live Camera</h3>
 
-            <div className="mb-3 flex gap-4 items-start">
-                <div className="w-1/2 relative">
-                    <video ref={videoRef} className="w-full bg-black rounded" playsInline muted />
-                    <canvas ref={overlayRef} className="absolute inset-0 pointer-events-none" />
-                    <canvas ref={canvasRef} style={{ display: 'none' }} />
+            {/* Responsive layout: stack on mobile, side-by-side on md+ */}
+            <div className="mb-3 flex flex-col md:flex-row gap-4 items-start">
+                <div className="w-full md:w-1/2 relative">
+                    <video ref={videoRef} className="w-full bg-black rounded" playsInline muted/>
+                    <canvas ref={overlayRef} className="absolute inset-0 pointer-events-none"/>
+                    <canvas ref={canvasRef} style={{display: 'none'}}/>
                 </div>
 
-                <div className="w-1/2">
+                <div className="w-full md:w-1/2">
                     <h4 className="text-sm font-semibold mb-2">Captured Frames</h4>
                     {croppedUrls.length ? (
-                        <ImageSlider images={croppedUrls} className="max-h-72" />
+                        <ImageSlider images={croppedUrls} className="max-h-72"/>
                     ) : (
                         <div className="text-gray-600">No frames yet</div>
                     )}
                 </div>
             </div>
 
-            <div className="flex gap-3 justify-center mb-3">
+            {/* Responsive buttons: stack on mobile, row on sm+ */}
+            <div className="flex flex-col sm:flex-row gap-3 justify-center mt-10 mb-2">
                 {!streaming ? (
-                    <button onClick={startStream} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded">
+                    <button onClick={startStream}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded">
                         Start Camera
                     </button>
                 ) : (
-                    <button onClick={stopStream} className="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold rounded">
+                    <button onClick={stopStream}
+                            className="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold rounded">
                         Stop Camera
                     </button>
                 )}
@@ -466,7 +470,7 @@ export default function LiveCamera({ onResults, onBack }) {
                     {analyzing ? 'Analyzing...' : 'Start Analysis'}
                 </button>
 
-                <BackButton onClick={handleBack} />
+                <BackButton onClick={handleBack}/>
             </div>
 
             {error && <div className="text-red-600 mb-2">{error}</div>}
@@ -486,15 +490,15 @@ export default function LiveCamera({ onResults, onBack }) {
                             <li key={idx} className="text-gray-800">
                                 <span className="font-bold text-lg">{result.label}</span>
                                 <span className="text-sm text-gray-600 ml-2">
-                        {(result.confidence * 100).toFixed(1)}%
-                    </span>
+                    {(result.confidence * 100).toFixed(1)}%
+                </span>
                             </li>
                         )) || (
                             <li className="text-gray-800">
                                 <span className="font-bold text-lg">{classificationResults.prediction}</span>
                                 <span className="text-sm text-gray-600 ml-2">
-                        {(classificationResults.confidence * 100).toFixed(1)}%
-                    </span>
+                    {(classificationResults.confidence * 100).toFixed(1)}%
+                </span>
                             </li>
                         )}
                     </ol>
