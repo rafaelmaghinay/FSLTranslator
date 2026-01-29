@@ -263,14 +263,6 @@ def sample_frames_uniformly(frames, target_count):
     indices = np.linspace(0, len(frames) - 1, target_count).astype(int)
     return [frames[i] for i in indices]
 
-def classify_sequence(frames):
-    """Classify a sequence of frames."""
-    seq = torch.stack(frames).unsqueeze(0)
-    with torch.no_grad():
-        out = clf(seq)
-        probs = F.softmax(out, 1)
-        conf, pred = torch.max(probs, 1)
-        return CLASS_NAMES[pred.item()], float(conf.item())
 
 # ============================================================
 # HIGH-LEVEL PROCESSING FUNCTIONS
@@ -568,7 +560,7 @@ def classify_cropped_images(image_paths: list) -> dict:
             "status": "success" | "error",
             "prediction": str,
             "confidence": float,
-            "top_3": list of dict with {label, confidence},
+            "all_predictions": list of dict with {label, confidence},
             "frames_used": int,
             "error": str (if error)
         }
@@ -611,33 +603,33 @@ def classify_cropped_images(image_paths: list) -> dict:
             out = clf(seq)
             probs = F.softmax(out, 1)
             
-            # Get top 3 predictions
-            top3_probs, top3_indices = torch.topk(probs[0], 3)
+            # Get ALL predictions (sorted by confidence)
+            all_probs, all_indices = torch.sort(probs[0], descending=True)
             
-            # Top 1 (best prediction) - CLEAN IT
-            raw_pred = CLASS_NAMES[top3_indices[0].item()]
-            pred = clean_class_name(raw_pred)  # ⬅️ CLEAN HERE
-            conf = float(top3_probs[0].item())
+            # Top 1 (best prediction)
+            raw_pred = CLASS_NAMES[all_indices[0].item()]
+            pred = clean_class_name(raw_pred)
+            conf = float(all_probs[0].item())
             
-            # Top 3 results - CLEAN THEM TOO
-            top_3 = [
+            # ALL results
+            all_predictions = [
                 {
-                    "label": clean_class_name(CLASS_NAMES[top3_indices[i].item()]),  # ⬅️ CLEAN HERE
-                    "confidence": round(float(top3_probs[i].item()), 4)
+                    "label": clean_class_name(CLASS_NAMES[all_indices[i].item()]),
+                    "confidence": round(float(all_probs[i].item()), 4)
                 }
-                for i in range(3)
+                for i in range(len(CLASS_NAMES))
             ]
         
         print(f"✅ Classification complete!")
         print(f"   Top 1: {pred} ({conf:.2%})")
-        print(f"   Top 2: {top_3[1]['label']} ({top_3[1]['confidence']:.2%})")
-        print(f"   Top 3: {top_3[2]['label']} ({top_3[2]['confidence']:.2%})")
+        print(f"   Top 2: {all_predictions[1]['label']} ({all_predictions[1]['confidence']:.2%})")
+        print(f"   Top 3: {all_predictions[2]['label']} ({all_predictions[2]['confidence']:.2%})")
         
         return {
             "status": "success",
             "prediction": pred,
             "confidence": conf,
-            "top_3": top_3,
+            "all_predictions": all_predictions,
             "frames_used": len(selected_tensors)
         }
     except Exception as e:

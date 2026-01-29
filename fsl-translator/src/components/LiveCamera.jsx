@@ -383,7 +383,6 @@ export default function LiveCamera({ onResults, onBack }) {
 
             console.log(`🔍 Analyzing ${croppedUrls.length} cropped frames...`);
 
-            // Send JSON with cropped_images array
             const res = await fetch(`${SERVER_BASE}/api/classify`, {
                 method: 'POST',
                 headers: {
@@ -402,12 +401,15 @@ export default function LiveCamera({ onResults, onBack }) {
 
             console.log(`✅ Prediction: ${data.prediction} (${(data.confidence * 100).toFixed(1)}%)`);
 
-            // Store results with top 3
+            // Extract top 3 and all predictions
+            const top3 = data.all_predictions?.slice(0, 3) || [];
+
             setClassificationResults({
                 prediction: data.prediction,
                 confidence: data.confidence,
                 frames_used: data.frames_used,
-                top3: data.top_3  // This is the array of {label, confidence}
+                top3: top3,
+                allPredictions: data.all_predictions || []
             });
 
         } catch (err) {
@@ -417,6 +419,8 @@ export default function LiveCamera({ onResults, onBack }) {
             setAnalyzing(false);
         }
     };
+
+    const [showAll, setShowAll] = useState(false);
 
     return (
         <div className="max-w-3xl mx-auto bg-white rounded shadow p-4 text-center">
@@ -484,25 +488,62 @@ export default function LiveCamera({ onResults, onBack }) {
 
             {classificationResults && (
                 <div className="text-left mt-4 p-4 bg-green-50 rounded border border-green-200">
-                    <div className="text-sm font-semibold text-green-800 mb-2">Top 3 Classification Results</div>
-                    <ol className="list-decimal list-inside space-y-2">
-                        {classificationResults.top3?.map((result, idx) => (
-                            <li key={idx} className="text-gray-800">
-                                <span className="font-bold text-lg">{result.label}</span>
-                                <span className="text-sm text-gray-600 ml-2">
-                    {(result.confidence * 100).toFixed(1)}%
-                </span>
-                            </li>
-                        )) || (
-                            <li className="text-gray-800">
-                                <span className="font-bold text-lg">{classificationResults.prediction}</span>
-                                <span className="text-sm text-gray-600 ml-2">
-                    {(classificationResults.confidence * 100).toFixed(1)}%
-                </span>
-                            </li>
-                        )}
-                    </ol>
-                    <div className="text-xs text-gray-500 mt-2">
+                    <div className="text-sm font-semibold text-green-800 mb-2">Classification Results</div>
+
+                    <table className="w-full border-collapse">
+                        <thead>
+                        <tr className="border-b border-gray-300">
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-12">#</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Prediction</th>
+                            <th className="text-right py-2 px-3 font-semibold text-gray-700">Confidence Level</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {classificationResults.allPredictions?.slice(0, 3).map((result, idx) => (
+                            <tr key={idx} className={`border-b border-gray-200 ${idx === 0 ? 'bg-blue-50' : ''}`}>
+                                <td className={`py-2 px-3 ${idx === 0 ? 'text-lg font-bold text-gray-900' : 'text-base text-gray-700'}`}>
+                                    {idx + 1}
+                                </td>
+                                <td className={`py-2 px-3 ${idx === 0 ? 'text-lg font-bold text-gray-900' : 'text-base text-gray-700'}`}>
+                                    {result.label}
+                                </td>
+                                <td className={`py-2 px-3 text-right ${idx === 0 ? 'text-lg font-semibold text-gray-900' : 'text-base text-gray-600'}`}>
+                                    {(result.confidence * 100).toFixed(1)}%
+                                </td>
+                            </tr>
+                        ))}
+                        </tbody>
+                    </table>
+
+
+
+                    {/* Show All Predictions Dropdown */}
+                    {classificationResults.allPredictions && classificationResults.allPredictions.length > 3 && (
+                        <details className="mt-3" open={showAll} onToggle={(e) => setShowAll(e.target.open)}>
+                            <summary className="cursor-pointer text-sm font-medium text-blue-600 hover:text-blue-800">
+                                {showAll ? 'Show less' : `Show remaining ${classificationResults.allPredictions.length - 3} predictions`}
+                            </summary>
+                            <table className="w-full border-collapse mt-2">
+                                <tbody>
+                                {classificationResults.allPredictions.slice(3).map((result, idx) => (
+                                    <tr key={idx} className="border-b border-gray-100">
+                                        <td className="py-1.5 px-3 text-sm text-gray-700 w-12">
+                                            {idx + 4}
+                                        </td>
+                                        <td className="py-1.5 px-3 text-sm text-gray-700">
+                                            {result.label}
+                                        </td>
+                                        <td className="py-1.5 px-3 text-right text-sm text-gray-600">
+                                            {(result.confidence * 100).toFixed(2)}%
+                                        </td>
+                                    </tr>
+                                ))}
+                                </tbody>
+                            </table>
+                        </details>
+                    )}
+
+                    <div className="text-xs text-gray-500 mt-3">
                         Frames used: {classificationResults.frames_used}
                     </div>
                 </div>

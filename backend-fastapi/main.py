@@ -191,7 +191,7 @@ async def classify(request: ClassifyRequest):
         "cropped_images": ["data:image/jpeg;base64,/9j/4AAQSk...", ...]
     }
     
-    Returns top 3 predictions with confidence scores.
+    Returns all predictions with confidence scores (sorted by confidence).
     """
     cropped_images = request.cropped_images
     
@@ -225,7 +225,7 @@ async def classify(request: ClassifyRequest):
                 print(f"   ❌ Error converting image {i+1}: {e}")
                 raise HTTPException(400, f"Invalid base64 image at index {i}")
         
-        # Classify using the temporary file paths - NOW RETURNS TOP 3
+        # Classify using the temporary file paths
         result = classify_cropped_images(temp_paths)
         
         if result["status"] == "success":
@@ -233,7 +233,7 @@ async def classify(request: ClassifyRequest):
                 "ok": True,
                 "prediction": result["prediction"],
                 "confidence": round(result["confidence"], 4),
-                "top_3": result["top_3"],  # ⬅️ NEW: Top 3 results
+                "all_predictions": result["all_predictions"],
                 "frames_used": result["frames_used"]
             }
         else:
