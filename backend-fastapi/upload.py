@@ -17,7 +17,7 @@ UPLOADS_DIR = BASE_DIR / "uploads"
 TEMP_DIR = UPLOADS_DIR / "temp"
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
-CLASS_NAMES =  [
+CLASS_NAMES =   [
     "alphabets_A",  # Index 0
     "alphabets_B",  # Index 1
     "alphabets_C",  # Index 2
@@ -57,10 +57,10 @@ CLASS_NAMES =  [
     "phrases_GoodEvening",  # Index 36
     "phrases_GoodMorning",  # Index 37
     "phrases_HowAreYou",  # Index 38
-    "phrases_Imfine",  # Index 39
-    "phrases_Sorry",  # Index 40
-    "phrases_ThankYou",  # Index 41
-    "phrases_YoureWelcome",  # Index 42
+    "phrases_Sorry",  # Index 39
+    "phrases_ThankYou",  # Index 40
+    "phrases_YoureWelcome",  # Index 41
+    "phrases_imfine",  # Index 42
 ]
 
 NUM_CLASSES = len(CLASS_NAMES)
@@ -145,7 +145,7 @@ clf = ResNet34_BiLSTM(
 )
 
 try:
-    checkpoint = torch.load("models/bilstm_best_test13.pth", map_location='cpu', weights_only=False)
+    checkpoint = torch.load("models/bilstm_best_test14.pth", map_location='cpu', weights_only=False)
     if 'model_state_dict' in checkpoint:
         clf.load_state_dict(checkpoint['model_state_dict'])
     else:
