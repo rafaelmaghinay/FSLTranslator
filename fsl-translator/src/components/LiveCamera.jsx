@@ -366,8 +366,18 @@ export default function LiveCamera({ onResults, onBack }) {
         }
     };
 
-    const handleBack = () => {
+    const handleBack = async () => {
         stopStream();
+
+        // Always clear session on backend
+        try {
+            await fetch(`${SERVER_BASE}/api/clear`, {
+                method: 'POST'
+            });
+        } catch (err) {
+            console.error('Failed to clear session:', err);
+        }
+
         if (onBack) onBack();
     };
 

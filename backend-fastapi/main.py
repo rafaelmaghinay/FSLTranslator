@@ -23,10 +23,17 @@ from webcam import yolo_detect_boxes, get_or_create_session, active_sessions, SE
 
 app = FastAPI(title="FSL Upload Backend")
 
+allowed_origins = [
+    "http://localhost:5173",
+    "https://fslrecognizer.vercel.app/",
+    "https://fsl-backend-*.run.app", 
+]
+
+
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins= allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -72,17 +79,19 @@ def clear_uploads(directory: Path):
                         os.remove(str(item))
                         print(f"   ✓ Deleted file: {item.name}")
                     elif item.is_dir():
+                        # Count files before deletion (for temp specifically)
+                        file_count = len(list(item.rglob('*'))) if item.name == 'temp' else 0
                         shutil.rmtree(str(item))
-                        print(f"   ✓ Deleted dir: {item.name}")
+                        print(f"   ✓ Deleted dir: {item.name}" + (f" ({file_count} files)" if file_count > 0 else ""))
                 except Exception as e:
                     print(f"   ⚠ Error deleting {item.name}: {e}")
         
-        # Recreate subdirectories
+        # Recreate subdirectories (including temp)
         for subdir in [IMG_DIR, SEQ_DIR, VID_DIR, TEMP_DIR]:
             subdir.mkdir(parents=True, exist_ok=True)
-            print(f"   ✓ Created dir: {subdir.name}")
+            print(f"   ✓ Recreated dir: {subdir.name}")
         
-        print("✅ Clear completed successfully")
+        print("✅ Clear completed successfully (all subdirs including temp)")
         return True
     except Exception as e:
         print(f"❌ Error clearing uploads: {e}")
