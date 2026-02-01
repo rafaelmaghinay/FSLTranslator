@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import ImageSlider from './ImageSlider.jsx';
 import BackButton from './BackButton.jsx';
+import { SERVER_BASE } from '../config.js';
 
-const SERVER_BASE = 'http://localhost:8000';
 
 export default function Results({ urls = [], result = null, loading = false, error = null, onBack }) {
     const [clearing, setClearing] = useState(false);

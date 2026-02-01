@@ -25,7 +25,8 @@ app = FastAPI(title="FSL Upload Backend")
 
 allowed_origins = [
     "http://localhost:5173",
-    "https://fslrecognizer.vercel.app/",
+    "https://fslrecognizer.vercel.app",  # ⬅️ Remove trailing slash
+    "http://167.172.78.230",  # ⬅️ Add your droplet IP
     "https://fsl-backend-*.run.app", 
 ]
 

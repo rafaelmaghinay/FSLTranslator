@@ -1,7 +1,6 @@
 // File: `src/components/Upload.jsx`
 import React, { useRef, useState } from 'react';
-
-const SERVER_BASE = 'http://localhost:8000';
+import { SERVER_BASE } from '../config.js';
 
 export default function Upload({ onUploaded, onStartLive }) {
     const fileRefs = {

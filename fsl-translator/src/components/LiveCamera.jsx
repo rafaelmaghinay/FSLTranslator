@@ -2,8 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import BackButton from './BackButton.jsx';
 import ImageSlider from './ImageSlider.jsx';
 
-const SERVER_BASE = 'http://localhost:8000';
-const WS_URL = 'ws://localhost:8000/api/live';
+import { SERVER_BASE, WS_URL } from '../config.js';
 
 export default function LiveCamera({ onResults, onBack }) {
     const videoRef = useRef(null);
