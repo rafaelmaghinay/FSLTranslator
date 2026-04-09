@@ -1,0 +1,17 @@
+# FastAPI & Server
+fastapi
+uvicorn[standard]
+python-multipart
+websockets
+
+# Deep Learning & Computer Vision
+torch
+torchvision
+ultralytics
+opencv-python
+numpy
+Pillow
+
+# Utilities
+pydantic
+aiofiles

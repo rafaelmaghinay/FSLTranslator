@@ -1,5 +1,6 @@
 import React from 'react';
 
+// Navigation header with logo, home, and about links
 export default function NavigationBar({ onAboutClick, onHomeClick }) {
     return (
         <nav className="bg-white shadow-md fixed top-0 left-0 right-0 z-50">

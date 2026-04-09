@@ -4,6 +4,7 @@ import ImageSlider from './ImageSlider.jsx';
 
 import { SERVER_BASE, WS_URL } from '../config.js';
 
+// Real-time camera feed with hand detection and frame capture for live sign language recognition
 export default function LiveCamera({ onResults, onBack }) {
     const videoRef = useRef(null);
     const overlayRef = useRef(null);
@@ -163,8 +164,7 @@ export default function LiveCamera({ onResults, onBack }) {
             wsRef.current.send(JSON.stringify({
                 frame: frameBase64
             }));
-        }, 200); // Reduce to ~6-7 FPS for better performance
-    };
+        }, 200);
 
     // Draw detection boxes on overlay
     const drawBoxes = (boxes) => {

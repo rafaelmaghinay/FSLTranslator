@@ -2,6 +2,7 @@
 import React, { useRef, useState } from 'react';
 import { SERVER_BASE } from '../config.js';
 
+// File upload interface with options for video, image sequence, or live camera input
 export default function Upload({ onUploaded, onStartLive }) {
     const fileRefs = {
         video: useRef(null),

@@ -25,11 +25,9 @@ app = FastAPI(title="FSL Upload Backend")
 
 allowed_origins = [
     "http://localhost:5173",
-    "https://fslrecognizer.vercel.app",  # ⬅️ Remove trailing slash
-    "http://167.172.78.230",  # ⬅️ Add your droplet IP
-    "https://fsl-backend-*.run.app", 
+    "https://fslrecognizer.vercel.app",
+    "https://fsl-translator-api.chickenkiller.com",  # ⬅️ Add YOUR domain
 ]
-
 
 # CORS
 app.add_middleware(
@@ -50,8 +48,10 @@ TEMP_DIR = UPLOADS / "temp"
 frame_skip_counter = 0
 FRAME_SKIP = 2  
 
+# Request model for sign language classification from image sequences
 class ClassifyRequest(BaseModel):
-    cropped_images: List[str]  # base64 strings
+    """Pydantic model for batch classification requests with base64-encoded cropped images."""
+    cropped_images: List[str]
 
 for d in [IMG_DIR, SEQ_DIR, VID_DIR, TEMP_DIR]:
     d.mkdir(parents=True, exist_ok=True)
@@ -59,13 +59,16 @@ for d in [IMG_DIR, SEQ_DIR, VID_DIR, TEMP_DIR]:
 # ⬅️ MOUNT STATIC FILES - Add this BEFORE defining routes
 app.mount("/uploads", StaticFiles(directory=UPLOADS), name="uploads")
 
+# Save uploaded file to destination path with directory creation
 def save_file(upload: UploadFile, dest: Path):
+    """Write uploaded file to disk with automatic parent directory creation."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     with dest.open("wb") as f:
         shutil.copyfileobj(upload.file, f)
 
+# Remove all uploaded files and recreate directory structure
 def clear_uploads(directory: Path):
-    """Clear all files in uploads directory while preserving structure."""
+    """Delete all upload files and subdirectories, then recreate folder structure."""
     try:
         # Force garbage collection to release file handles
         gc.collect()
@@ -100,8 +103,10 @@ def clear_uploads(directory: Path):
         traceback.print_exc()
         return False
 
+# Health check endpoint to verify backend server status
 @app.get("/")
 def health():
+    """Check backend server availability and status."""
     return {"ok": True, "message": "Backend is running"}
 
 # ============================================================
@@ -109,9 +114,10 @@ def health():
 # ============================================================
 
 
+# Upload image sequence for sign recognition (requires exactly 20 images)
 @app.post("/api/upload/sequence")
 async def upload_sequence(images: List[UploadFile] = File(...)):
-    """Upload multiple images, detect hands in all, return cropped images as base64."""
+    """Process sequence of images: detect hands in each frame and return cropped hand regions as base64."""
     if not images:
         raise HTTPException(400, "No images uploaded")
 
@@ -153,9 +159,10 @@ async def upload_sequence(images: List[UploadFile] = File(...)):
     else:
         raise HTTPException(500, result.get("error", "Unknown error"))
 
+# Upload video file for hand detection and frame extraction
 @app.post("/api/upload/video")
 async def upload_video(video: UploadFile = File(...)):
-    if not video.content_type or not video.content_type.startswith("video/"):
+    """Extract frames from video, detect hand regions, and return cropped images as base64."""
         raise HTTPException(400, "Only video files allowed")
 
     ext = Path(video.filename).suffix or ".mp4"
@@ -191,18 +198,10 @@ async def upload_video(video: UploadFile = File(...)):
     
 
 
+# Classify sign language from sequence of cropped hand images
 @app.post("/api/classify")
 async def classify(request: ClassifyRequest):
-    """
-    Classify a sequence of cropped images from base64 strings.
-    
-    Expected input:
-    {
-        "cropped_images": ["data:image/jpeg;base64,/9j/4AAQSk...", ...]
-    }
-    
-    Returns all predictions with confidence scores (sorted by confidence).
-    """
+    """Classify Filipino Sign Language gesture from sequence of hand-cropped images using BiLSTM neural network."""
     cropped_images = request.cropped_images
     
     if not cropped_images:
@@ -262,9 +261,10 @@ async def classify(request: ClassifyRequest):
 # CLEAR ENDPOINT
 # ============================================================
 
+# Delete all stored uploads from server
 @app.post("/api/clear")
 async def clear_all():
-    """Clear all uploaded files."""
+    """Remove all uploaded files and reset upload directories."""
     try:
         success = clear_uploads(UPLOADS)
         if success:

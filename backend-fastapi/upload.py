@@ -83,7 +83,9 @@ TARGET_VIDEO_FRAMES = 20
 # MODEL DEFINITION
 # ============================================================
 
+# ResNet34 backbone with BiLSTM temporal modeling for sign language recognition
 class ResNet34_BiLSTM(nn.Module):
+    """Neural network combining ResNet34 feature extraction with bidirectional LSTM for sequence classification."""
     def __init__(self, num_classes, lstm_hidden=96, freeze_backbone=True):
         super().__init__()
         weights = models.ResNet34_Weights.DEFAULT
@@ -165,10 +167,9 @@ print("✅ All models ready\n")
 # CORE PROCESSING FUNCTIONS
 # ============================================================
 
+# Format model class labels into human-readable text representations
 def clean_class_name(class_name: str) -> str:
-    """
-    Convert 'alphabets_A' -> 'A', 'digits_one' -> '1', 'phrases_Sorry' -> 'Sorry'
-    """
+    """Convert internal class names (alphabets_A, digits_one, etc.) to display format (A, 1, Sorry)."""
     # Handle digits
     digit_map = {
         "digits_zero": "0",
@@ -197,8 +198,9 @@ def clean_class_name(class_name: str) -> str:
     # Fallback: return as-is
     return class_name
 
+# Extract hand region from frame using YOLO detector
 def detect_and_crop(frame):
-    """Detect hand in single frame and crop it."""
+    """Run YOLO hand detection on single frame and crop detected hand region with padding."""
     results = detector(frame, stream=True, verbose=False)
     
     for r in results:
@@ -219,8 +221,9 @@ def detect_and_crop(frame):
     
     return None
 
+# Extract hands from multiple frames in batch for efficiency
 def detect_and_crop_batch(frames):
-    """Detect hands in batch of frames."""
+    """Process array of frames with batch YOLO detection and extract hand regions from each."""
     crops = []
     results = detector(frames, stream=False, verbose=False)
     
@@ -243,14 +246,16 @@ def detect_and_crop_batch(frames):
     
     return crops
 
+# Convert cropped hand image to normalized tensor for neural network input
 def preprocess_crop(crop):
-    """Convert cropped image to tensor and PIL Image."""
+    """Transform cropped hand image to tensor with ImageNet normalization."""
     rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
     pil_img = Image.fromarray(rgb)
     return transform(pil_img), pil_img
 
+# Uniformly sample frames from sequence to match required length
 def sample_frames_uniformly(frames, target_count):
-    """Sample exactly target_count frames uniformly from list."""
+    """Extract evenly-spaced frames from list, padding with duplicates if needed."""
     if len(frames) == 0:
         return []
     
@@ -268,6 +273,7 @@ def sample_frames_uniformly(frames, target_count):
 # HIGH-LEVEL PROCESSING FUNCTIONS
 # ============================================================
 
+# Process single image: detect hand and return cropped region
 def process_single_image(image_path: str) -> dict:
     """
     Process single image: detect hand and return cropped image info.
@@ -300,6 +306,7 @@ def process_single_image(image_path: str) -> dict:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
+# Process multiple images: detect hands in all frames and return cropped regions
 def process_image_sequence(image_paths: list) -> dict:
     """
     Process multiple images: detect hands and return cropped images info.
@@ -361,8 +368,9 @@ def process_image_sequence(image_paths: list) -> dict:
 
 
 
+# Extract frames from video file and detect hands with 10/80/10 temporal sampling
 def process_video(video_path: str, target_frames: int = TARGET_VIDEO_FRAMES) -> dict:
-    try:
+    """Extract keyframes from video, detect hand regions, with 10% beginning/80% middle/10% end sampling strategy."""
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
             return {"status": "error", "error": "Could not open video file"}
@@ -551,6 +559,7 @@ def process_video(video_path: str, target_frames: int = TARGET_VIDEO_FRAMES) -> 
         traceback.print_exc()
         return {"status": "error", "error": f"{type(e).__name__}: {e}"}
     
+# Run sign language classification on hand image sequence using trained model
 def classify_cropped_images(image_paths: list) -> dict:
     """
     Classify a sequence of cropped images.

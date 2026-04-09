@@ -40,8 +40,7 @@ if torch.cuda.is_available():
 else:
     print("⚠️ YOLO running on CPU (slower)")
 
-# In webcam.py, update yolo_detect_boxes function:
-
+# Real-time hand detection using YOLO on video frames
 def yolo_detect_boxes(frame, conf_thres=0.30, resize_input=True):
     """
     Run YOLO detection with optimized settings.
@@ -110,8 +109,9 @@ def yolo_detect_boxes(frame, conf_thres=0.30, resize_input=True):
 
 
 
+# Create or retrieve session for webcam frame streaming
 def get_or_create_session(session_id=None):
-    """Get existing session or create new one."""
+    """Initialize or retrieve existing webcam session for storing frames and detected hands."""
     if session_id and session_id in active_sessions:
         return active_sessions[session_id]
     
@@ -125,8 +125,9 @@ def get_or_create_session(session_id=None):
     }
     return active_sessions[new_id]
 
+# End webcam session and cleanup captured frames
 def stop_session(session_id):
-    """Stop and cleanup session."""
+    """Terminate capture session and release stored frames."""
     if session_id in active_sessions:
         session = active_sessions[session_id]
         session["is_capturing"] = False
@@ -135,8 +136,9 @@ def stop_session(session_id):
         return True
     return False
 
+# Retrieve stored frames from webcam capture session
 def capture_session_video(session_id):
-    """Get captured frames from session."""
+    """Get captured frames and hand detections from active session."""
     if session_id in active_sessions:
         return active_sessions[session_id]
     return None

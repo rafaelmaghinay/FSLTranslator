@@ -5,10 +5,12 @@ import BackButton from './BackButton.jsx';
 import { SERVER_BASE } from '../config.js';
 
 
+// Analysis preview and classification trigger for uploaded media
 export default function StartAnalysis({ urls = [], paths = [], onResults, onBack }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
+    // Handle back navigation and cleanup uploads
     const handleBack = async () => {
         setError(null);
         try {

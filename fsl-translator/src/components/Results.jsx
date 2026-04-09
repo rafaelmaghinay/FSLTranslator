@@ -4,11 +4,13 @@ import BackButton from './BackButton.jsx';
 import { SERVER_BASE } from '../config.js';
 
 
+// Display classification results with confidence scores and media preview
 export default function Results({ urls = [], result = null, loading = false, error = null, onBack }) {
     const [clearing, setClearing] = useState(false);
     const [clearError, setClearError] = useState(null);
     const [showAll, setShowAll] = useState(false);
 
+    // Handle back navigation and cleanup uploads from server
     const handleBack = async () => {
         setClearError(null);
         setClearing(true);

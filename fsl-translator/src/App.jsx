@@ -6,31 +6,38 @@ import Results from './components/Results.jsx';
 import LiveCamera from './components/LiveCamera.jsx';
 import About from './components/About.jsx';
 
+// Main application component managing view routing and state for sign language recognition
 function App() {
+    // Track current view: 'upload', 'start', 'results', 'live', or 'about'
     const [view, setView] = useState('upload');
     const [uploadedData, setUploadedData] = useState(null);
     const [result, setResult] = useState(null);
 
+    // Reset to home view and clear data
     const reset = () => {
         setView('upload');
         setUploadedData(null);
         setResult(null);
     };
 
+    // Handle successful file upload and transition to analysis
     const handleUploaded = (data) => {
         setUploadedData(data);
         setView('start');
     };
 
+    // Handle classification results and show output
     const handleResults = (res) => {
         setResult(res);
         setView('results');
     };
 
+    // Transition to live camera stream
     const handleStartLive = () => {
         setView('live');
     };
 
+    // Open about page for project information
     const handleAbout = () => {
         setView('about');
     };

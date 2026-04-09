@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.env
+venv/
+.venv/
+
+# Git
+.git/
+.gitignore
+
+# Environment files
+.env
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Uploads (don't copy to image - will be mounted as volume)
+uploads/
+
+# IDE
+.vscode/
+.idea/
