@@ -39,17 +39,43 @@ FSL Translator combines modern machine learning with an intuitive web interface 
 ```
 FSLTranslator/
 ├── backend-fastapi/                # Backend API server
-│   ├── main.py                    # FastAPI application & endpoints
-│   ├── upload.py                  # Image/video processing & classification
-│   ├── webcam.py                  # Live camera session management
+│   ├── app/                        # Application package
+│   │   ├── core/                  # Core application settings
+│   │   │   ├── config.py          # Configuration & environment variables
+│   │   │   ├── constants.py       # FSL gesture class names & display mappings
+│   │   │   └── __init__.py
+│   │   ├── routes/                # API endpoints (organized by feature)
+│   │   │   ├── health.py          # Health check endpoint
+│   │   │   ├── upload.py          # Image/video upload & detection
+│   │   │   ├── classify.py        # Gesture classification endpoint
+│   │   │   ├── live.py            # WebSocket & live camera endpoints
+│   │   │   ├── management.py      # Admin endpoints (cleanup, etc.)
+│   │   │   └── __init__.py
+│   │   ├── services/              # Business logic & ML operations
+│   │   │   ├── ml_model.py        # ResNet34+BiLSTM model & inference
+│   │   │   ├── classify_service.py # Gesture classification logic
+│   │   │   ├── webcam_service.py  # Live camera session management
+│   │   │   └── __init__.py
+│   │   ├── schemas/               # Request/Response validation models
+│   │   │   ├── requests.py        # Input validation (Pydantic models)
+│   │   │   ├── responses.py       # Output formatting (Pydantic models)
+│   │   │   └── __init__.py
+│   │   ├── utils/                 # Utility functions
+│   │   │   ├── file_utils.py      # File I/O operations
+│   │   │   ├── hand_detection.py  # YOLO hand detection & cropping
+│   │   │   └── __init__.py
+│   │   └── __init__.py
+│   ├── main.py                    # FastAPI application entry point
 │   ├── models/                    # Pre-trained model weights
-│   │   ├── bilstm_best_test14.pth # Classification model
-│   │   └── yolo_best.pt           # Hand detection model
-│   ├── uploads/                   # Temporary file storage
+│   │   ├── bilstm_best_test14.pth # ResNet34+BiLSTM classification model
+│   │   └── yolo_best.pt           # YOLO hand detection model
+│   ├── uploads/                   # Temporary file storage (images, videos, sequences)
 │   ├── requirements.txt           # Python dependencies
-│   └── Dockerfile                 # Container configuration
+│   ├── Dockerfile                 # Container configuration
+│   ├── .gitignore                 # Git ignore rules
+│   └── BACKEND_README.md          # Detailed backend documentation
 │
-└── fsl-translator/                 # Frontend application
+└── fsl-translator/                # Frontend React application
     ├── src/
     │   ├── App.jsx                # Main routing component
     │   ├── config.js              # Server configuration
@@ -58,7 +84,7 @@ FSLTranslator/
     │   │   ├── Upload.jsx         # File upload interface
     │   │   ├── StartAnalysis.jsx  # Analysis preview
     │   │   ├── Results.jsx        # Classification results display
-    │   │   ├── LiveCamera.jsx     # Real-time camera stream
+    │   │   ├── LiveCamera.jsx     # Real-time camera stream with WebSocket
     │   │   ├── NavigationBar.jsx  # Top navigation
     │   │   ├── ImageSlider.jsx    # Preview carousel
     │   │   ├── BackButton.jsx     # Navigation button

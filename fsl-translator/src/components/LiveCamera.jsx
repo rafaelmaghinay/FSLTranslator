@@ -165,6 +165,7 @@ export default function LiveCamera({ onResults, onBack }) {
                 frame: frameBase64
             }));
         }, 200);
+    };
 
     // Draw detection boxes on overlay
     const drawBoxes = (boxes) => {
@@ -528,10 +529,14 @@ export default function LiveCamera({ onResults, onBack }) {
 
                     {/* Show All Predictions Dropdown */}
                     {classificationResults.allPredictions && classificationResults.allPredictions.length > 3 && (
-                        <details className="mt-3" open={showAll} onToggle={(e) => setShowAll(e.target.open)}>
-                            <summary className="cursor-pointer text-sm font-medium text-blue-600 hover:text-blue-800">
-                                {showAll ? 'Show less' : `Show remaining ${classificationResults.allPredictions.length - 3} predictions`}
-                            </summary>
+                        <div className="mt-3">
+                            <button 
+                                onClick={() => setShowAll(!showAll)}
+                                className="text-sm font-medium text-blue-600 hover:text-blue-800"
+                            >
+                                {showAll ? '▼ Show less' : `▶ Show remaining ${classificationResults.allPredictions.length - 3} predictions`}
+                            </button>
+                            {showAll && (
                             <table className="w-full border-collapse mt-2">
                                 <tbody>
                                 {classificationResults.allPredictions.slice(3).map((result, idx) => (
@@ -549,7 +554,8 @@ export default function LiveCamera({ onResults, onBack }) {
                                 ))}
                                 </tbody>
                             </table>
-                        </details>
+                            )}
+                        </div>
                     )}
 
                     <div className="text-xs text-gray-500 mt-3">
